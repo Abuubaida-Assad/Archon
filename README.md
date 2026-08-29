@@ -153,6 +153,3 @@ GITHUB_TOKEN=ghp_your_token_here
 
 ---
 
-## License
-
-MIT License. Built for the Autonomous Codebase Architecture Mapper Hackathon.
