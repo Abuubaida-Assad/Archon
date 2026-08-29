@@ -1,7 +1,7 @@
 <div align="center">
 
 # ARCHON
-### AI-Powered Codebase Architecture Intelligence & Blast Radius Simulator
+### AI-Powered Codebase Architecture Intelligence 
 
 *Understand the architecture. Trace the dependencies. Predict the impact.*
 
