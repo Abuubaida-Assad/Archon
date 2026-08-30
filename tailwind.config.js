@@ -53,11 +53,11 @@ module.exports = {
         mono: ["var(--font-mono)", "JetBrains Mono", "Fira Code", "ui-monospace", "monospace"],
       },
       boxShadow: {
-        'glow-cyan': '0 0 20px -5px rgba(56, 189, 248, 0.25)',
-        'glow-rose': '0 0 20px -5px rgba(244, 63, 94, 0.25)',
-        'glow-amber': '0 0 20px -5px rgba(245, 158, 11, 0.25)',
-        'glow-emerald': '0 0 20px -5px rgba(16, 185, 129, 0.25)',
-        'panel': '0 10px 30px -10px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.06)',
+        'glow-cyan': '0 1px 3px 0 rgba(0, 0, 0, 0.3)',
+        'glow-rose': '0 1px 3px 0 rgba(0, 0, 0, 0.3)',
+        'glow-amber': '0 1px 3px 0 rgba(0, 0, 0, 0.3)',
+        'glow-emerald': '0 1px 3px 0 rgba(0, 0, 0, 0.3)',
+        'panel': '0 4px 16px -2px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08)',
       },
       animation: {
         'pulse-subtle': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
