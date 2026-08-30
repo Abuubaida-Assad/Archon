@@ -191,7 +191,7 @@ export const HeroInput: React.FC<HeroInputProps> = ({
   };
 
   return (
-    <div className="w-full h-full min-h-0 flex-1 flex flex-col justify-center items-center px-4 py-8 overflow-y-auto bg-background text-slate-100">
+    <div className="w-full h-full min-h-0 flex-1 flex flex-col justify-center items-center px-4 py-8 overflow-y-auto bg-background text-slate-100 relative">
       {/* Hidden File Input for fallback directory selection */}
       <input
         type="file"
@@ -201,17 +201,17 @@ export const HeroInput: React.FC<HeroInputProps> = ({
         className="hidden"
       />
 
-      {/* Main Centered Content Container */}
-      <div className="w-full max-w-xl flex flex-col items-center z-10">
-        {/* Title */}
-        <h1 className="text-2xl sm:text-3xl font-bold text-slate-100 text-center tracking-tight mb-1.5 font-sans">
-          Archon
-        </h1>
+      {/* Very subtle faint grid pattern */}
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b08_1px,transparent_1px),linear-gradient(to_bottom,#1e293b08_1px,transparent_1px)] bg-[size:32px_32px] pointer-events-none" />
 
-        {/* Subtitle */}
-        <p className="text-sm text-slate-400 text-center mb-6 font-sans">
-          Analyze your codebase architecture.
-        </p>
+      {/* Main Centered Content Container */}
+      <div className="w-full max-w-2xl flex flex-col items-center z-10 my-auto">
+        {/* Main Headline */}
+        <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-slate-100 text-center tracking-tight leading-[1.15] max-w-xl mb-6 font-sans">
+          Every module.<br />
+          Every dependency.<br />
+          <span className="text-sky-400 italic font-serif font-normal">Verified.</span>
+        </h1>
 
         {/* Mode Switcher Tabs */}
         <div className="flex items-center gap-1 p-0.5 rounded-lg bg-slate-900 border border-slate-800 mb-3 text-xs">
