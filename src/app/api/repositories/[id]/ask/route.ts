@@ -9,13 +9,14 @@ export async function POST(
   try {
     const { id } = await params;
     const body = await req.json();
-    const { query, model } = body;
+    const { query, model, summary: bodySummary } = body;
 
     if (!query || typeof query !== 'string') {
       return NextResponse.json({ success: false, error: 'Query string is required.' }, { status: 400 });
     }
 
-    const summary = defaultCacheStore.get(id);
+    // Retrieve from server cache or fallback to client payload (for Vercel multi-lambda resilience)
+    const summary = defaultCacheStore.get(id) || bodySummary;
     if (!summary) {
       return NextResponse.json({ success: false, error: `Repository "${id}" not found.` }, { status: 404 });
     }

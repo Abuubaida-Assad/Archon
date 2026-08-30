@@ -10,22 +10,26 @@ export async function POST(
   try {
     const { id } = await params;
     const body = await req.json();
-    const { targetNodeId } = body;
+    const { targetNodeId, nodes: bodyNodes, edges: bodyEdges, summary: bodySummary } = body;
 
     if (!targetNodeId) {
       return NextResponse.json({ success: false, error: 'targetNodeId is required.' }, { status: 400 });
     }
 
-    const summary = defaultCacheStore.get(id);
-    if (!summary) {
-      return NextResponse.json({ success: false, error: `Repository "${id}" not found.` }, { status: 404 });
+    // Retrieve from server cache or fallback to client payload (for Vercel multi-lambda resilience)
+    const cachedSummary = defaultCacheStore.get(id);
+    const nodes = cachedSummary?.nodes || bodyNodes || bodySummary?.nodes || [];
+    const edges = cachedSummary?.edges || bodyEdges || bodySummary?.edges || [];
+
+    if (nodes.length === 0) {
+      return NextResponse.json({ success: false, error: `Repository graph data for "${id}" is unavailable.` }, { status: 404 });
     }
 
-    const impact = defaultImpactEngine.analyzeImpact(targetNodeId, summary.nodes, summary.edges);
+    const impact = defaultImpactEngine.analyzeImpact(targetNodeId, nodes, edges);
 
     // Enrich with AI Architect Insight grounded in graph evidence
     try {
-      const aiInsight = await defaultAiProvider.explainImpact(impact.targetNode, impact, summary.edges);
+      const aiInsight = await defaultAiProvider.explainImpact(impact.targetNode, impact, edges);
       impact.aiArchitectInsight = aiInsight;
     } catch (aiErr) {
       console.warn('[Impact API] AI explanation error:', aiErr);

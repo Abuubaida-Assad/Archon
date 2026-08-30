@@ -1,7 +1,9 @@
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import crypto from 'crypto';
 import simpleGit, { SimpleGit } from 'simple-git';
+import AdmZip from 'adm-zip';
 import { RepositoryMetadata } from '@/types';
 
 export interface FileEntry {
@@ -74,9 +76,14 @@ export class RepoManager {
   private baseStorageDir: string;
 
   constructor(storageDir?: string) {
-    this.baseStorageDir = storageDir || path.join(process.cwd(), 'data', 'repos');
-    if (!fs.existsSync(this.baseStorageDir)) {
-      fs.mkdirSync(this.baseStorageDir, { recursive: true });
+    // On Vercel / serverless, only os.tmpdir() is writable. Never use process.cwd()!
+    this.baseStorageDir = storageDir || path.join(os.tmpdir(), 'archon-repos');
+    try {
+      if (!fs.existsSync(this.baseStorageDir)) {
+        fs.mkdirSync(this.baseStorageDir, { recursive: true });
+      }
+    } catch (err) {
+      console.warn('[RepoManager] Warning creating base directory:', err);
     }
   }
 
@@ -87,14 +94,18 @@ export class RepoManager {
     const trimmed = rawUrl.trim();
 
     // Check if it's a local filesystem path
-    if (fs.existsSync(trimmed) && fs.statSync(trimmed).isDirectory()) {
-      const name = path.basename(trimmed);
-      return {
-        owner: 'local',
-        name,
-        cleanUrl: trimmed,
-        isLocal: true,
-      };
+    try {
+      if (fs.existsSync(trimmed) && fs.statSync(trimmed).isDirectory()) {
+        const name = path.basename(trimmed);
+        return {
+          owner: 'local',
+          name,
+          cleanUrl: trimmed,
+          isLocal: true,
+        };
+      }
+    } catch {
+      // Not a local directory or inaccessible
     }
 
     // Clean up .git suffix and whitespace
@@ -160,7 +171,73 @@ export class RepoManager {
   }
 
   /**
-   * Clone or update repository into sandbox
+   * Download and unpack GitHub Zipball when git binary is not present (Vercel Serverless)
+   */
+  private async downloadGitHubZip(
+    owner: string,
+    name: string,
+    targetDir: string,
+    branch?: string,
+    token?: string
+  ): Promise<string> {
+    const headers: Record<string, string> = {
+      'User-Agent': 'Archon-Architecture-Intelligence',
+      Accept: 'application/vnd.github.v3+json',
+    };
+    if (token) {
+      headers['Authorization'] = `token ${token}`;
+    }
+
+    // Attempt 1: Fetch via GitHub zipball endpoint
+    const targetRef = branch && branch !== 'default' ? branch : 'HEAD';
+    const zipUrl = `https://api.github.com/repos/${owner}/${name}/zipball/${targetRef}`;
+
+    let response = await fetch(zipUrl, { headers, redirect: 'follow' });
+
+    // If API endpoint fails or rate-limited without token, fallback to codeload archive
+    if (!response.ok) {
+      const fallbackUrl = `https://github.com/${owner}/${name}/archive/refs/heads/${branch || 'main'}.zip`;
+      response = await fetch(fallbackUrl, { headers: { 'User-Agent': 'Archon' } });
+      if (!response.ok) {
+        const masterFallback = `https://github.com/${owner}/${name}/archive/refs/heads/master.zip`;
+        response = await fetch(masterFallback, { headers: { 'User-Agent': 'Archon' } });
+      }
+    }
+
+    if (!response.ok) {
+      throw new Error(`Failed to download repository archive from GitHub (HTTP ${response.status}: ${response.statusText}). If this is a private repository, please add a GitHub Token.`);
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    // Extract zip in memory into targetDir
+    const zip = new AdmZip(buffer);
+    const zipEntries = zip.getEntries();
+
+    if (zipEntries.length === 0) {
+      throw new Error(`Downloaded repository archive for ${owner}/${name} was empty.`);
+    }
+
+    // GitHub zip archives have a root container folder (e.g. "owner-repo-sha123/"). Strip it.
+    const rootDirName = zipEntries[0].entryName.split('/')[0];
+    
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+
+    zip.extractAllTo(targetDir, true);
+
+    const extractedRoot = path.join(targetDir, rootDirName);
+    if (fs.existsSync(extractedRoot) && fs.statSync(extractedRoot).isDirectory()) {
+      return extractedRoot;
+    }
+
+    return targetDir;
+  }
+
+  /**
+   * Clone or update repository into sandbox (Universal Serverless + Git fallback)
    */
   public async acquireRepository(
     rawUrl: string,
@@ -217,65 +294,65 @@ export class RepoManager {
       return { repoDir: cleanUrl, metadata };
     }
 
-    // Remote Git clone
-    if (fs.existsSync(repoDir)) {
-      onProgress?.('Reading cached repository clone', 25);
+    // Remote Git Acquisition
+    let finalRepoDir = repoDir;
+
+    if (!fs.existsSync(repoDir) || fs.readdirSync(repoDir).length === 0) {
+      onProgress?.(`Acquiring repository ${owner}/${name}`, 20);
+
+      // First attempt standard git clone
+      let gitSucceeded = false;
       try {
-        const git: SimpleGit = simpleGit(repoDir);
-        const log = await git.log({ maxCount: 1 });
-        if (log.latest) {
-          commitHash = log.latest.hash.substring(0, 8);
+        const git: SimpleGit = simpleGit();
+        const cloneOptions = ['--depth', '1', '--single-branch', '--no-tags'];
+        if (branch && branch !== 'default') {
+          cloneOptions.push('--branch', branch);
         }
-        const b = await git.branch();
-        detectedBranch = b.current || branch || 'main';
-      } catch (err) {
-        console.warn(`[RepoManager] Corrupted cached repo, re-cloning:`, err);
-        fs.rmSync(repoDir, { recursive: true, force: true });
-      }
-    }
 
-    if (!fs.existsSync(repoDir)) {
-      onProgress?.(`Cloning repository ${owner}/${name}`, 20);
-      const git: SimpleGit = simpleGit();
-      const cloneOptions = ['--depth', '1', '--single-branch', '--no-tags'];
-      if (branch && branch !== 'default') {
-        cloneOptions.push('--branch', branch);
-      }
+        let cloneUrl = cleanUrl;
+        if (token) {
+          cloneUrl = `https://${token}@github.com/${owner}/${name}.git`;
+        }
 
-      // Build clone URL with token if available
-      let cloneUrl = cleanUrl;
-      if (token) {
-        cloneUrl = `https://${token}@github.com/${owner}/${name}.git`;
-      }
-
-      try {
         await git.clone(cloneUrl, repoDir, cloneOptions);
+        gitSucceeded = true;
+
+        try {
+          const clonedGit: SimpleGit = simpleGit(repoDir);
+          const log = await clonedGit.log({ maxCount: 1 });
+          if (log.latest) {
+            commitHash = log.latest.hash.substring(0, 8);
+          }
+          const b = await clonedGit.branch();
+          detectedBranch = b.current || branch || 'main';
+        } catch {
+          commitHash = 'head';
+        }
       } catch (cloneErr: any) {
-        const errorMsg = cloneErr.message || String(cloneErr);
-        if (errorMsg.includes('Authentication failed') || errorMsg.includes('terminal prompts disabled')) {
-          throw new Error(`Repository "${owner}/${name}" is private or requires authentication. Please click the Key icon to provide a GitHub Personal Access Token.`);
-        }
-        if (errorMsg.includes('Remote branch') || errorMsg.includes('not found')) {
-          throw new Error(`Repository branch "${branch}" was not found on remote.`);
-        }
-        throw new Error(`Git clone failed for "${owner}/${name}": ${errorMsg}`);
+        console.warn(`[RepoManager] Git clone failed or not available on serverless, falling back to GitHub Archive ZIP:`, cloneErr?.message || cloneErr);
       }
 
-      const clonedGit: SimpleGit = simpleGit(repoDir);
-      try {
-        const log = await clonedGit.log({ maxCount: 1 });
-        if (log.latest) {
-          commitHash = log.latest.hash.substring(0, 8);
-        }
-        const b = await clonedGit.branch();
-        detectedBranch = b.current || branch || 'main';
-      } catch {
-        commitHash = 'head';
+      // If git clone failed or git is missing in serverless environment, download zipball via HTTPS
+      if (!gitSucceeded) {
+        onProgress?.(`Downloading repository archive for ${owner}/${name}`, 25);
+        finalRepoDir = await this.downloadGitHubZip(owner, name, repoDir, branch, token);
+      }
+    } else {
+      // Use cached repository in /tmp
+      finalRepoDir = repoDir;
+      const subEntries = fs.readdirSync(repoDir);
+      if (subEntries.length === 1 && fs.statSync(path.join(repoDir, subEntries[0])).isDirectory()) {
+        finalRepoDir = path.join(repoDir, subEntries[0]);
       }
     }
 
     onProgress?.('Scanning repository files and index', 40);
-    const files = this.scanDirectory(repoDir);
+    const files = this.scanDirectory(finalRepoDir);
+
+    if (files.length === 0) {
+      throw new Error(`No parsable code files found in repository "${owner}/${name}".`);
+    }
+
     const { languages, totalLoc } = this.calculateStats(files);
 
     const metadata: RepositoryMetadata = {
@@ -295,84 +372,93 @@ export class RepoManager {
       pipelineStages: [],
     };
 
-    return { repoDir, metadata };
+    return { repoDir: finalRepoDir, metadata };
   }
 
   /**
-   * Scan directory recursively with safety filters
+   * Recursively scan directory and extract parsable files
    */
-  public scanDirectory(dirPath: string, maxFiles: number = 2000): FileEntry[] {
-    const results: FileEntry[] = [];
+  public scanDirectory(dir: string, baseDir: string = dir, maxFiles: number = 400): FileEntry[] {
+    const files: FileEntry[] = [];
 
-    const walk = (currentDir: string) => {
-      if (results.length >= maxFiles) return;
+    const traverse = (currentDir: string) => {
+      if (files.length >= maxFiles) return;
 
       let entries: fs.Dirent[] = [];
       try {
         entries = fs.readdirSync(currentDir, { withFileTypes: true });
-      } catch (err) {
+      } catch {
         return;
       }
 
       for (const entry of entries) {
-        if (results.length >= maxFiles) break;
+        if (files.length >= maxFiles) break;
 
         const fullPath = path.join(currentDir, entry.name);
-        const relPath = path.relative(dirPath, fullPath).replace(/\\/g, '/');
+        const relPath = path.relative(baseDir, fullPath).replace(/\\/g, '/');
 
         if (entry.isDirectory()) {
           if (IGNORED_DIRECTORIES.has(entry.name) || entry.name.startsWith('.')) {
             continue;
           }
-          walk(fullPath);
+          traverse(fullPath);
         } else if (entry.isFile()) {
           const ext = path.extname(entry.name).toLowerCase();
-          if (IGNORED_EXTENSIONS.has(ext)) {
+          if (IGNORED_EXTENSIONS.has(ext)) continue;
+
+          const language = EXTENSION_LANGUAGE_MAP[ext] || 'other';
+          if (language === 'other' && !ext.match(/\.(ts|js|py|json|md|yaml|yml|sql)$/i)) {
             continue;
           }
 
-          const language = EXTENSION_LANGUAGE_MAP[ext] || 'other';
-
           try {
             const stats = fs.statSync(fullPath);
-            // Skip large minified/binary files > 1.5MB
-            if (stats.size > 1.5 * 1024 * 1024) continue;
+            if (stats.size > 500 * 1024) continue; // Skip files > 500KB
 
-            const content = fs.readFileSync(fullPath, 'utf8');
-            const linesOfCode = content.split('\n').length;
+            const content = fs.readFileSync(fullPath, 'utf-8');
+            const lines = content.split('\n').length;
 
-            results.push({
+            files.push({
               relativePath: relPath,
               absolutePath: fullPath,
+              name: entry.name,
               extension: ext,
               language,
               sizeBytes: stats.size,
-              linesOfCode,
+              linesOfCode: lines,
               content,
             });
-          } catch (readErr) {
-            // skip unreadable file
+          } catch {
+            // Ignore unreadable files
           }
         }
       }
     };
 
-    walk(dirPath);
-    return results;
+    traverse(dir);
+    return files;
   }
 
-  private calculateStats(files: FileEntry[]): { languages: Record<string, number>; totalLoc: number } {
-    const languages: Record<string, number> = {};
+  /**
+   * Calculate language breakdown and total LOC
+   */
+  public calculateStats(files: FileEntry[]): { languages: Record<string, number>; totalLoc: number } {
+    const langLoc: Record<string, number> = {};
     let totalLoc = 0;
 
     for (const f of files) {
+      langLoc[f.language] = (langLoc[f.language] || 0) + f.linesOfCode;
       totalLoc += f.linesOfCode;
-      if (f.language !== 'other') {
-        languages[f.language] = (languages[f.language] || 0) + f.linesOfCode;
+    }
+
+    const percentages: Record<string, number> = {};
+    if (totalLoc > 0) {
+      for (const [lang, loc] of Object.entries(langLoc)) {
+        percentages[lang] = Math.round((loc / totalLoc) * 100);
       }
     }
 
-    return { languages, totalLoc };
+    return { languages: percentages, totalLoc };
   }
 }
 

@@ -13,6 +13,7 @@
     "@babel/parser": "^7.26.9",
     "@babel/traverse": "^7.26.9",
     "@babel/types": "^7.26.9",
+    "adm-zip": "^0.6.0",
     "clsx": "^2.1.1",
     "d3-force": "^3.0.0",
     "framer-motion": "^12.4.7",
@@ -25,6 +26,7 @@
     "three": "^0.174.0"
   },
   "devDependencies": {
+    "@types/adm-zip": "^0.5.8",
     "@types/babel__traverse": "^7.20.6",
     "@types/d3-force": "^3.0.10",
     "@types/node": "^22.13.5",

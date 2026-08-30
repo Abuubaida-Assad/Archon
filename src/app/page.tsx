@@ -65,7 +65,19 @@ export default function Home() {
       });
 
       clearTimeout(stageTimer);
-      const data = await res.json();
+
+      let data: any;
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        throw new Error(
+          res.status >= 500
+            ? `Server encountered an issue (HTTP ${res.status}). If this repository is private, please provide a GitHub Personal Access Token.`
+            : `Server response error (${res.status}): ${text.slice(0, 100)}`
+        );
+      }
 
       if (data.success && data.summary) {
         setProgressPercent(100);
@@ -97,7 +109,11 @@ export default function Home() {
       const res = await fetch(`/api/repositories/${summary.repository.id}/impact`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetNodeId: nodeId }),
+        body: JSON.stringify({
+          targetNodeId: nodeId,
+          nodes: summary.nodes,
+          edges: summary.edges,
+        }),
       });
 
       const data = await res.json();

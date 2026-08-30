@@ -22,7 +22,7 @@ import {
   Cpu,
   Globe2,
 } from 'lucide-react';
-import { SampleRepoInfo } from '@/lib/sample-repos';
+import { SampleRepoInfo, getSampleRepositories } from '@/lib/sample-repos';
 
 interface HeroInputProps {
   onAnalyze: (url: string, branch?: string, token?: string, localFiles?: any[]) => Promise<void>;
@@ -48,20 +48,22 @@ export const HeroInput: React.FC<HeroInputProps> = ({
   const [prUrl, setPrUrl] = useState('');
   const [showTokenModal, setShowTokenModal] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [showSamples, setShowSamples] = useState(false);
-  const [samples, setSamples] = useState<SampleRepoInfo[]>([]);
+  const [samples, setSamples] = useState<SampleRepoInfo[]>(getSampleRepositories());
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     fetch('/api/samples')
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) return null;
+        return res.json();
+      })
       .then((data) => {
-        if (data.success) {
-          setSamples(data.samples || []);
+        if (data && data.success && Array.isArray(data.samples) && data.samples.length > 0) {
+          setSamples(data.samples);
         }
       })
-      .catch((err) => console.warn('Failed to load sample repos:', err));
+      .catch((err) => console.warn('Failed to load sample repos from API, using built-ins:', err));
   }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -218,11 +220,15 @@ export const HeroInput: React.FC<HeroInputProps> = ({
 
           <button
             type="button"
-            onClick={() => setShowSamples((prev) => !prev)}
+            onClick={() => {
+              if (samples.length > 0) {
+                handleSelectSample(samples[0]);
+              }
+            }}
             className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white font-medium text-xs sm:text-sm border border-slate-800 transition-all"
           >
             <Zap className="w-3.5 h-3.5 text-sky-400" />
-            <span>Explore sample repositories</span>
+            <span>Explore sample repository (expressjs/express)</span>
           </button>
         </div>
 
@@ -452,62 +458,41 @@ export const HeroInput: React.FC<HeroInputProps> = ({
           )}
         </div>
 
-        {/* Toggleable Sample Repositories (Only visible on click) */}
-        {!showSamples ? (
-          <div className="w-full max-w-2xl mt-4 flex justify-center">
-            <button
-              type="button"
-              onClick={() => setShowSamples(true)}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-900/80 hover:bg-slate-800 border border-slate-800 text-xs font-medium text-slate-300 hover:text-white transition-all shadow-sm group"
-            >
-              <Zap className="w-3.5 h-3.5 text-sky-400 group-hover:scale-110 transition-transform" />
-              <span>Explore sample repositories</span>
-              <span className="text-[10px] text-slate-500 group-hover:text-slate-300">↓</span>
-            </button>
-          </div>
-        ) : (
-          <div className="w-full max-w-2xl mt-5 animate-in fade-in-50 slide-in-from-top-2 duration-200">
-            <div className="flex items-center justify-between mb-2.5">
-              <div className="flex items-center gap-1.5 text-xs font-medium text-slate-300">
-                <Zap className="w-3.5 h-3.5 text-sky-400" />
-                <span>Sample Repositories (1-Click)</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowSamples(false)}
-                className="text-[11px] text-slate-500 hover:text-slate-300 transition-colors flex items-center gap-1"
-              >
-                <span>Hide</span>
-                <span>▲</span>
-              </button>
+        {/* Sample Repositories (1-Click Instant Analysis) */}
+        <div className="w-full max-w-2xl mt-5">
+          <div className="flex items-center justify-between mb-2.5">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-300 font-mono">
+              <Zap className="w-3.5 h-3.5 text-sky-400" />
+              <span>Sample Repositories (1-Click)</span>
             </div>
+            <span className="text-[11px] text-slate-500 font-mono">Click to test instantly</span>
+          </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-              {samples.slice(0, 6).map((sample) => (
-                <button
-                  key={sample.id}
-                  type="button"
-                  onClick={() => handleSelectSample(sample)}
-                  disabled={isLoading}
-                  className="p-3 rounded-xl bg-slate-900/60 hover:bg-slate-800/90 border border-slate-800/90 hover:border-sky-500/40 transition-all duration-200 text-left group flex flex-col justify-between shadow-sm hover:shadow-md disabled:opacity-50"
-                >
-                  <div className="flex items-center justify-between w-full mb-1.5">
-                    <span className="text-xs font-semibold text-slate-200 group-hover:text-sky-300 truncate">
-                      {sample.name}
-                    </span>
-                    <ArrowRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-sky-400 group-hover:translate-x-1 transition-all shrink-0 ml-1" />
-                  </div>
-                  <div className="flex items-center justify-between text-[11px] text-slate-400">
-                    <span className="truncate">{sample.category}</span>
-                    <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-400 group-hover:text-slate-300 text-[10px] font-medium">
-                      {sample.tags[0]}
-                    </span>
-                  </div>
-                </button>
-              ))}
-            </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+            {samples.slice(0, 6).map((sample) => (
+              <button
+                key={sample.id}
+                type="button"
+                onClick={() => handleSelectSample(sample)}
+                disabled={isLoading}
+                className="p-3 rounded-xl bg-slate-900/60 hover:bg-slate-800/90 border border-slate-800 hover:border-sky-500/50 transition-all duration-200 text-left group flex flex-col justify-between shadow-sm hover:shadow-md disabled:opacity-50"
+              >
+                <div className="flex items-center justify-between w-full mb-1.5">
+                  <span className="text-xs font-semibold text-slate-200 group-hover:text-sky-300 truncate">
+                    {sample.name}
+                  </span>
+                  <ArrowRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-sky-400 group-hover:translate-x-0.5 transition-all shrink-0 ml-1" />
+                </div>
+                <div className="flex items-center justify-between text-[11px] text-slate-400">
+                  <span className="truncate">{sample.category}</span>
+                  <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 group-hover:text-slate-300 text-[10px] font-mono">
+                    {sample.tags[0]}
+                  </span>
+                </div>
+              </button>
+            ))}
           </div>
-        )}
+        </div>
       </div>
 
       {/* Bottom Capabilities Dock - Sleek minimalist container */}
