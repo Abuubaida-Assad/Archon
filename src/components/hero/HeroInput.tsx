@@ -7,14 +7,11 @@ import {
   Settings2,
   FolderGit2,
   FolderOpen,
-  Key,
-  Lock,
   GitPullRequest,
   Loader2,
   AlertCircle,
-  ChevronDown,
   Globe2,
-  X,
+  Sparkles,
 } from 'lucide-react';
 import { SampleRepoInfo, getSampleRepositories } from '@/lib/sample-repos';
 
@@ -38,18 +35,15 @@ export const HeroInput: React.FC<HeroInputProps> = ({
   isLoading,
   errorMessage,
 }) => {
-  const [inputMode, setInputMode] = useState<'url' | 'private' | 'folder' | 'pr'>('url');
+  const [inputMode, setInputMode] = useState<'url' | 'folder' | 'pr'>('url');
   const [url, setUrl] = useState('');
   const [branch, setBranch] = useState('');
-  const [token, setToken] = useState<string>('');
   const [prUrl, setPrUrl] = useState('');
   const [localError, setLocalError] = useState<string>('');
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [showSampleDropdown, setShowSampleDropdown] = useState(false);
   const [samples, setSamples] = useState<SampleRepoInfo[]>(getSampleRepositories());
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const sampleDropdownRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     fetch('/api/samples')
@@ -65,52 +59,31 @@ export const HeroInput: React.FC<HeroInputProps> = ({
       .catch(() => {});
   }, []);
 
-  // Close sample dropdown on outside click
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (sampleDropdownRef.current && !sampleDropdownRef.current.contains(event.target as Node)) {
-        setShowSampleDropdown(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (isLoading) return;
     setLocalError('');
 
-    if (inputMode === 'private') {
-      if (!url.trim()) {
-        setLocalError('Please enter a private repository URL.');
-        return;
-      }
-      if (!token.trim()) {
-        setLocalError('A GitHub Personal Access Token is required for private repositories.');
-        return;
-      }
-      onAnalyze(url.trim(), branch.trim() || undefined, token.trim(), undefined, true);
-    } else if (inputMode === 'url') {
+    if (inputMode === 'url') {
       if (!url.trim()) {
         setLocalError('Please enter a repository URL.');
         return;
       }
-      onAnalyze(url.trim(), branch.trim() || undefined, token.trim() || undefined, undefined, false);
+      onAnalyze(url.trim(), branch.trim() || undefined, undefined, undefined, false);
     } else if (inputMode === 'pr') {
       if (!prUrl.trim()) {
         setLocalError('Please enter a pull request URL.');
         return;
       }
-      onAnalyze(prUrl.trim(), undefined, token.trim() || undefined, undefined, false);
+      onAnalyze(prUrl.trim(), undefined, undefined, undefined, false);
     }
   };
 
   const handleSelectSample = (sample: SampleRepoInfo) => {
+    if (isLoading) return;
     setUrl(sample.name);
-    setShowSampleDropdown(false);
     setLocalError('');
-    onAnalyze(sample.url, undefined, token.trim() || undefined, undefined, false);
+    onAnalyze(sample.url, undefined, undefined, undefined, false);
   };
 
   // Browser Native Directory Picker (Web File System Access API)
@@ -246,22 +219,6 @@ export const HeroInput: React.FC<HeroInputProps> = ({
 
           <button
             type="button"
-            onClick={() => {
-              setInputMode('private');
-              setLocalError('');
-            }}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-md transition-colors text-xs font-medium ${
-              inputMode === 'private'
-                ? 'bg-slate-800 text-slate-100 border border-slate-700'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Lock className="w-3.5 h-3.5 text-sky-400" />
-            <span>Private Repo</span>
-          </button>
-
-          <button
-            type="button"
             onClick={handleOpenFolderPicker}
             className="flex items-center gap-1.5 px-3 py-1 rounded-md text-slate-400 hover:text-slate-200 transition-colors text-xs font-medium"
           >
@@ -289,134 +246,61 @@ export const HeroInput: React.FC<HeroInputProps> = ({
         {/* Main Input Form */}
         <div className="w-full relative">
           <form onSubmit={handleSubmit} className="space-y-3">
-            {/* Standard Single Box Mode (Public GitHub / PR) */}
-            {inputMode !== 'private' ? (
-              <div className="flex flex-col sm:flex-row items-center gap-2 p-1.5 rounded-lg bg-slate-900 border border-slate-800 focus-within:border-slate-700 focus-within:ring-1 focus-within:ring-slate-700 transition-all">
-                <div className="flex items-center gap-2.5 px-2.5 py-1.5 w-full">
-                  {inputMode === 'pr' ? (
-                    <GitPullRequest className="w-4 h-4 text-sky-400 shrink-0" />
+            <div className="flex flex-col sm:flex-row items-center gap-2 p-1.5 rounded-lg bg-slate-900 border border-slate-800 focus-within:border-slate-700 focus-within:ring-1 focus-within:ring-slate-700 transition-all">
+              <div className="flex items-center gap-2.5 px-2.5 py-1.5 w-full">
+                {inputMode === 'pr' ? (
+                  <GitPullRequest className="w-4 h-4 text-sky-400 shrink-0" />
+                ) : (
+                  <Globe2 className="w-4 h-4 text-slate-500 shrink-0" />
+                )}
+                <input
+                  type="text"
+                  value={inputMode === 'pr' ? prUrl : url}
+                  onChange={(e) => (inputMode === 'pr' ? setPrUrl(e.target.value) : setUrl(e.target.value))}
+                  placeholder={
+                    inputMode === 'pr'
+                      ? 'github.com/owner/repo/pull/123'
+                      : 'Enter GitHub repository URL (e.g. expressjs/express or https://github.com/...)'
+                  }
+                  disabled={isLoading}
+                  autoFocus
+                  className="w-full bg-transparent text-slate-100 placeholder-slate-500 text-xs sm:text-sm focus:outline-none font-sans"
+                />
+              </div>
+
+              <div className="flex items-center gap-1.5 w-full sm:w-auto shrink-0 justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowAdvanced(!showAdvanced)}
+                  className={`p-1.5 rounded-md border text-xs font-medium transition-colors ${
+                    showAdvanced
+                      ? 'bg-slate-800 border-slate-700 text-slate-200'
+                      : 'bg-slate-850 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  }`}
+                  title="Branch & Scope Settings"
+                >
+                  <Settings2 className="w-3.5 h-3.5" />
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={(!url.trim() && !prUrl.trim()) || isLoading}
+                  className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-1.5 rounded-md bg-sky-500 hover:bg-sky-400 disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 font-semibold text-xs sm:text-sm transition-colors shadow-sm"
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-950" />
+                      <span>Analyzing...</span>
+                    </>
                   ) : (
-                    <Globe2 className="w-4 h-4 text-slate-500 shrink-0" />
+                    <>
+                      <span>Analyze</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </>
                   )}
-                  <input
-                    type="text"
-                    value={inputMode === 'pr' ? prUrl : url}
-                    onChange={(e) => (inputMode === 'pr' ? setPrUrl(e.target.value) : setUrl(e.target.value))}
-                    placeholder={
-                      inputMode === 'pr'
-                        ? 'github.com/owner/repo/pull/123'
-                        : 'Enter GitHub URL or owner/repo'
-                    }
-                    disabled={isLoading}
-                    autoFocus
-                    className="w-full bg-transparent text-slate-100 placeholder-slate-500 text-xs sm:text-sm focus:outline-none font-sans"
-                  />
-                </div>
-
-                <div className="flex items-center gap-1.5 w-full sm:w-auto shrink-0 justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setShowAdvanced(!showAdvanced)}
-                    className={`p-1.5 rounded-md border text-xs font-medium transition-colors ${
-                      showAdvanced
-                        ? 'bg-slate-800 border-slate-700 text-slate-200'
-                        : 'bg-slate-850 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                    }`}
-                    title="Branch & Scope Settings"
-                  >
-                    <Settings2 className="w-3.5 h-3.5" />
-                  </button>
-
-                  <button
-                    type="submit"
-                    disabled={(!url.trim() && !prUrl.trim()) || isLoading}
-                    className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-1.5 rounded-md bg-sky-500 hover:bg-sky-400 disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 font-semibold text-xs sm:text-sm transition-colors shadow-sm"
-                  >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-950" />
-                        <span>Analyzing...</span>
-                      </>
-                    ) : (
-                      <>
-                        <span>Analyze</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
-                      </>
-                    )}
-                  </button>
-                </div>
+                </button>
               </div>
-            ) : (
-              /* Dedicated Private Repository Mode */
-              <div className="p-3.5 rounded-lg bg-slate-900 border border-slate-800 space-y-3 shadow-md">
-                {/* Repository URL Input */}
-                <div>
-                  <label className="block text-[11px] font-medium text-slate-400 mb-1">Repository URL</label>
-                  <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-slate-950 border border-slate-800 focus-within:border-slate-700">
-                    <Lock className="w-4 h-4 text-sky-400 shrink-0" />
-                    <input
-                      type="text"
-                      value={url}
-                      onChange={(e) => setUrl(e.target.value)}
-                      placeholder="https://github.com/username/private-repository"
-                      disabled={isLoading}
-                      autoFocus
-                      className="w-full bg-transparent text-slate-100 placeholder-slate-500 text-xs sm:text-sm focus:outline-none font-sans"
-                    />
-                  </div>
-                </div>
-
-                {/* Personal Access Token Input */}
-                <div>
-                  <label className="block text-[11px] font-medium text-slate-400 mb-1">
-                    GitHub Personal Access Token
-                  </label>
-                  <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-slate-950 border border-slate-800 focus-within:border-slate-700">
-                    <Key className="w-4 h-4 text-sky-400 shrink-0" />
-                    <input
-                      type="password"
-                      value={token}
-                      onChange={(e) => setToken(e.target.value)}
-                      placeholder="ghp_xxxxxxxxxxxxxxxxxxxx or github_pat_xxxxxxxx"
-                      disabled={isLoading}
-                      className="w-full bg-transparent text-slate-100 placeholder-slate-500 text-xs sm:text-sm focus:outline-none font-mono"
-                    />
-                  </div>
-                  <p className="text-[11px] text-slate-500 mt-1">
-                    Required only for private GitHub repositories. Never logged or stored.
-                  </p>
-                </div>
-
-                <div className="flex items-center justify-between pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setShowAdvanced(!showAdvanced)}
-                    className="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1"
-                  >
-                    <Settings2 className="w-3.5 h-3.5" />
-                    <span>Branch settings</span>
-                  </button>
-
-                  <button
-                    type="submit"
-                    disabled={!url.trim() || !token.trim() || isLoading}
-                    className="flex items-center justify-center gap-1.5 px-5 py-2 rounded-md bg-sky-500 hover:bg-sky-400 disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 font-semibold text-xs sm:text-sm transition-colors shadow-sm"
-                  >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-950" />
-                        <span>Analyzing...</span>
-                      </>
-                    ) : (
-                      <>
-                        <span>Analyze</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            )}
+            </div>
 
             {/* Advanced Configuration Panel */}
             {showAdvanced && (
@@ -451,7 +335,7 @@ export const HeroInput: React.FC<HeroInputProps> = ({
           {isLoading && (
             <div className="mt-4 flex items-center justify-center gap-2 py-2 text-xs text-slate-400">
               <Loader2 className="w-4 h-4 text-sky-400 animate-spin" />
-              <span>Analyzing...</span>
+              <span>Analyzing repository architecture and dependency graph...</span>
             </div>
           )}
 
@@ -467,50 +351,37 @@ export const HeroInput: React.FC<HeroInputProps> = ({
           )}
         </div>
 
-        {/* Sample Repositories (Dropdown / Selector) */}
-        <div ref={sampleDropdownRef} className="relative mt-4">
-          <button
-            type="button"
-            onClick={() => setShowSampleDropdown(!showSampleDropdown)}
-            disabled={isLoading}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-slate-400 hover:text-slate-200 border border-slate-800 hover:border-slate-700 bg-slate-900/60 rounded-md transition-colors disabled:opacity-50"
-          >
-            <span>Sample repositories</span>
-            <ChevronDown className={`w-3.5 h-3.5 text-slate-500 transition-transform ${showSampleDropdown ? 'rotate-180' : ''}`} />
-          </button>
+        {/* Sample Repositories (Modern Interactive Chip Grid) */}
+        <div className="mt-5 w-full flex flex-col items-center">
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mb-2.5">
+            <Sparkles className="w-3 h-3 text-sky-400" />
+            <span>Try an open-source sample:</span>
+          </div>
 
-          {showSampleDropdown && (
-            <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1.5 w-72 max-w-[90vw] bg-slate-900 border border-slate-800 rounded-lg shadow-xl py-1 z-30">
-              <div className="px-3 py-1.5 text-[11px] font-medium text-slate-500 border-b border-slate-800 uppercase tracking-wider">
-                Select a sample repository
-              </div>
-              <div className="max-h-60 overflow-y-auto">
-                {samples.map((sample) => (
-                  <button
-                    key={sample.id}
-                    type="button"
-                    onClick={() => handleSelectSample(sample)}
-                    disabled={isLoading}
-                    className="w-full px-3 py-2 text-left text-xs hover:bg-slate-800 flex items-center justify-between group transition-colors"
-                  >
-                    <div className="truncate pr-2">
-                      <div className="font-mono font-medium text-slate-200 group-hover:text-sky-400 truncate">
-                        {sample.name}
-                      </div>
-                      <div className="text-[11px] text-slate-400 truncate">
-                        {sample.category}
-                      </div>
-                    </div>
-                    {sample.tags && sample.tags[0] && (
-                      <span className="text-[10px] text-slate-400 font-mono px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 shrink-0">
-                        {sample.tags[0]}
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+          <div className="flex flex-wrap items-center justify-center gap-1.5 max-w-xl">
+            {samples.slice(0, 5).map((sample) => {
+              const shortName = sample.name.split('/')[1] || sample.name;
+              const langTag = sample.tags?.[0] || 'Code';
+
+              return (
+                <button
+                  key={sample.id}
+                  type="button"
+                  onClick={() => handleSelectSample(sample)}
+                  disabled={isLoading}
+                  title={sample.description}
+                  className="group flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900/80 hover:bg-slate-800 border border-slate-800/90 hover:border-slate-700 transition-all text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span className="font-mono text-slate-300 group-hover:text-sky-400 font-medium transition-colors">
+                    {shortName}
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-mono px-1 py-0.2 rounded bg-slate-950 border border-slate-850">
+                    {langTag}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>

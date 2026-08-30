@@ -17,6 +17,14 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: 'Archon — Codebase Architecture Intelligence',
   description: 'Understand the architecture. Trace the dependency. Simulate the change. Ship with confidence.',
+  icons: {
+    icon: [
+      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: '/icon', type: 'image/png' },
+    ],
+    shortcut: '/icon.svg',
+    apple: '/icon',
+  },
 };
 
 export default function RootLayout({
