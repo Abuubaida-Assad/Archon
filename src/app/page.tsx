@@ -290,6 +290,7 @@ export default function Home() {
           repoId={summary.repository.id}
           filePath={sourceModalPath}
           targetLine={sourceModalLine}
+          nodes={summary.nodes}
           onClose={() => setSourceModalPath(null)}
         />
       )}

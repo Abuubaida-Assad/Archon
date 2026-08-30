@@ -180,32 +180,54 @@ export class RepoManager {
     branch?: string,
     token?: string
   ): Promise<string> {
-    const headers: Record<string, string> = {
-      'User-Agent': 'Archon-Architecture-Intelligence',
-      Accept: 'application/vnd.github.v3+json',
-    };
+    let response: Response | null = null;
+
+    // Strategy 1: If GitHub PAT token is provided, use official authenticated API
     if (token) {
-      headers['Authorization'] = `token ${token}`;
-    }
-
-    // Attempt 1: Fetch via GitHub zipball endpoint
-    const targetRef = branch && branch !== 'default' ? branch : 'HEAD';
-    const zipUrl = `https://api.github.com/repos/${owner}/${name}/zipball/${targetRef}`;
-
-    let response = await fetch(zipUrl, { headers, redirect: 'follow' });
-
-    // If API endpoint fails or rate-limited without token, fallback to codeload archive
-    if (!response.ok) {
-      const fallbackUrl = `https://github.com/${owner}/${name}/archive/refs/heads/${branch || 'main'}.zip`;
-      response = await fetch(fallbackUrl, { headers: { 'User-Agent': 'Archon' } });
-      if (!response.ok) {
-        const masterFallback = `https://github.com/${owner}/${name}/archive/refs/heads/master.zip`;
-        response = await fetch(masterFallback, { headers: { 'User-Agent': 'Archon' } });
+      try {
+        const targetRef = branch && branch !== 'default' ? branch : 'HEAD';
+        const zipUrl = `https://api.github.com/repos/${owner}/${name}/zipball/${targetRef}`;
+        response = await fetch(zipUrl, {
+          headers: {
+            'User-Agent': 'Archon-Architecture-Intelligence',
+            Accept: 'application/vnd.github.v3+json',
+            Authorization: `token ${token}`,
+          },
+          redirect: 'follow',
+        });
+      } catch (err) {
+        console.warn('[RepoManager] Token API download failed, falling back to public codeload:', err);
       }
     }
 
-    if (!response.ok) {
-      throw new Error(`Failed to download repository archive from GitHub (HTTP ${response.status}: ${response.statusText}). If this is a private repository, please add a GitHub Token.`);
+    // Strategy 2: Direct codeload.github.com (Zero API rate limits, 100% serverless safe)
+    if (!response || !response.ok) {
+      const urlsToTry: string[] = [];
+      if (branch && branch !== 'default') {
+        urlsToTry.push(`https://codeload.github.com/${owner}/${name}/zip/refs/heads/${branch}`);
+      }
+      urlsToTry.push(`https://codeload.github.com/${owner}/${name}/zip/HEAD`);
+      urlsToTry.push(`https://codeload.github.com/${owner}/${name}/zip/refs/heads/main`);
+      urlsToTry.push(`https://codeload.github.com/${owner}/${name}/zip/refs/heads/master`);
+
+      for (const url of urlsToTry) {
+        try {
+          const res = await fetch(url, {
+            headers: { 'User-Agent': 'Archon' },
+            redirect: 'follow',
+          });
+          if (res.ok) {
+            response = res;
+            break;
+          }
+        } catch {
+          // Continue to next candidate URL
+        }
+      }
+    }
+
+    if (!response || !response.ok) {
+      throw new Error(`Failed to access repository "${owner}/${name}". Please verify the repository name or provide a GitHub Personal Access Token if this is a private repository.`);
     }
 
     const arrayBuffer = await response.arrayBuffer();

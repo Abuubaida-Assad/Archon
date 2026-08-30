@@ -2,11 +2,13 @@
 
 import React, { useEffect, useState } from 'react';
 import { X, FileCode, Copy, Check, Loader2, AlertCircle } from 'lucide-react';
+import { ArchNode } from '@/types';
 
 interface SourceViewerModalProps {
   repoId: string;
   filePath: string | null;
   targetLine?: number;
+  nodes?: ArchNode[];
   onClose: () => void;
 }
 
@@ -14,6 +16,7 @@ export const SourceViewerModal: React.FC<SourceViewerModalProps> = ({
   repoId,
   filePath,
   targetLine = 1,
+  nodes = [],
   onClose,
 }) => {
   const [content, setContent] = useState<string>('');
@@ -24,23 +27,34 @@ export const SourceViewerModal: React.FC<SourceViewerModalProps> = ({
   useEffect(() => {
     if (!filePath || !repoId) return;
 
+    // Check if node is in client memory first
+    const matchingNode = nodes.find(
+      (n) => n.path === filePath || n.id === filePath || n.name === filePath || n.path.endsWith(filePath)
+    );
+
     setLoading(true);
     setError(null);
 
     fetch(`/api/repositories/${repoId}/source?path=${encodeURIComponent(filePath)}&line=${targetLine}`)
       .then((res) => res.json())
       .then((data) => {
-        if (data.success) {
-          setContent(data.content || '');
+        if (data.success && data.content) {
+          setContent(data.content);
+        } else if (matchingNode && (matchingNode.fullContent || matchingNode.codeSnippet)) {
+          setContent(matchingNode.fullContent || matchingNode.codeSnippet || '');
         } else {
           setError(data.error || 'Failed to load source code.');
         }
       })
       .catch((err) => {
-        setError(err.message || 'Failed to fetch source code.');
+        if (matchingNode && (matchingNode.fullContent || matchingNode.codeSnippet)) {
+          setContent(matchingNode.fullContent || matchingNode.codeSnippet || '');
+        } else {
+          setError(err.message || 'Failed to fetch source code.');
+        }
       })
       .finally(() => setLoading(false));
-  }, [repoId, filePath, targetLine]);
+  }, [repoId, filePath, targetLine, nodes]);
 
   if (!filePath) return null;
 
@@ -69,6 +83,7 @@ export const SourceViewerModal: React.FC<SourceViewerModalProps> = ({
 
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={handleCopy}
               className="p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors"
               title="Copy code"
@@ -76,6 +91,7 @@ export const SourceViewerModal: React.FC<SourceViewerModalProps> = ({
               {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
             </button>
             <button
+              type="button"
               onClick={onClose}
               className="p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors"
             >
@@ -101,17 +117,20 @@ export const SourceViewerModal: React.FC<SourceViewerModalProps> = ({
               {lines.map((lineStr, idx) => {
                 const lineNum = idx + 1;
                 const isTarget = lineNum === targetLine;
+
                 return (
                   <div
-                    key={lineNum}
-                    className={`table-row leading-6 ${
-                      isTarget ? 'bg-cyan-950/60 border-l-2 border-cyan-400 text-slate-100 font-semibold' : 'hover:bg-slate-900/50'
+                    key={idx}
+                    className={`table-row transition-colors ${
+                      isTarget ? 'bg-sky-500/20 text-sky-200' : 'hover:bg-slate-900/60'
                     }`}
                   >
-                    <span className="table-cell select-none pr-4 text-right text-slate-600 w-12 shrink-0">
+                    <span className="table-cell pr-4 text-slate-600 select-none text-right w-10 py-0.5 border-r border-slate-800/80 font-mono text-[11px]">
                       {lineNum}
                     </span>
-                    <span className="table-cell whitespace-pre font-mono">{lineStr || ' '}</span>
+                    <span className="table-cell pl-4 whitespace-pre font-mono py-0.5 select-text">
+                      {lineStr || ' '}
+                    </span>
                   </div>
                 );
               })}
