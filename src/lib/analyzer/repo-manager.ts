@@ -89,8 +89,11 @@ export class RepoManager {
   /**
    * Parse repository URL and extract metadata
    */
-  public parseRepoUrl(rawUrl: string): { owner: string; name: string; cleanUrl: string; isLocal: boolean } {
-    const trimmed = rawUrl.trim();
+  public parseRepoUrl(rawUrl: string): { owner: string; name: string; cleanUrl: string; isLocal: boolean; branch?: string } {
+    let trimmed = rawUrl.trim();
+
+    // Strip trailing slashes
+    trimmed = trimmed.replace(/\/+$/, '');
 
     // Check if it's a local filesystem path
     try {
@@ -107,56 +110,79 @@ export class RepoManager {
       // Not a local directory
     }
 
-    let cleanUrl = trimmed;
-    if (cleanUrl.endsWith('.git')) {
-      cleanUrl = cleanUrl.slice(0, -4);
-    }
-
-    // Support PR URL: github.com/owner/repo/pull/123
-    const prMatch = cleanUrl.match(/(?:https?:\/\/)?(?:www\.)?github\.com\/([^\/]+)\/([^\/]+)\/pull\/\d+/i);
-    if (prMatch) {
+    // SSH format: git@github.com:owner/repo.git
+    const sshMatch = trimmed.match(/^git@github\.com:([^\/]+)\/([^\/]+?)(?:\.git)?$/i);
+    if (sshMatch) {
       return {
-        owner: prMatch[1],
-        name: prMatch[2].replace(/\/$/, ''),
-        cleanUrl: `https://github.com/${prMatch[1]}/${prMatch[2].replace(/\/$/, '')}`,
+        owner: sshMatch[1],
+        name: sshMatch[2],
+        cleanUrl: `https://github.com/${sshMatch[1]}/${sshMatch[2]}`,
         isLocal: false,
       };
     }
 
-    // Standard github.com/owner/repo format
-    const githubMatch = cleanUrl.match(/(?:https?:\/\/)?(?:www\.)?github\.com\/([^\/]+)\/([^\/]+)/i);
+    // Support /tree/<branch> URL: github.com/owner/repo/tree/develop
+    const treeMatch = trimmed.match(/(?:https?:\/\/)?(?:www\.)?github\.com\/([^\/]+)\/([^\/]+)\/tree\/([^\/]+)/i);
+    if (treeMatch) {
+      const cleanName = treeMatch[2].replace(/\.git$/i, '');
+      return {
+        owner: treeMatch[1],
+        name: cleanName,
+        cleanUrl: `https://github.com/${treeMatch[1]}/${cleanName}`,
+        branch: treeMatch[3],
+        isLocal: false,
+      };
+    }
+
+    // Support PR URL: github.com/owner/repo/pull/123
+    const prMatch = trimmed.match(/(?:https?:\/\/)?(?:www\.)?github\.com\/([^\/]+)\/([^\/]+)\/pull\/\d+/i);
+    if (prMatch) {
+      const cleanName = prMatch[2].replace(/\.git$/i, '');
+      return {
+        owner: prMatch[1],
+        name: cleanName,
+        cleanUrl: `https://github.com/${prMatch[1]}/${cleanName}`,
+        isLocal: false,
+      };
+    }
+
+    // Standard github.com/owner/repo format (handles optional .git and subpaths)
+    const githubMatch = trimmed.match(/(?:https?:\/\/)?(?:www\.)?github\.com\/([^\/]+)\/([^\/]+)/i);
     if (githubMatch) {
+      const cleanName = githubMatch[2].replace(/\.git$/i, '');
       return {
         owner: githubMatch[1],
-        name: githubMatch[2].replace(/\/$/, ''),
-        cleanUrl: `https://github.com/${githubMatch[1]}/${githubMatch[2].replace(/\/$/, '')}`,
+        name: cleanName,
+        cleanUrl: `https://github.com/${githubMatch[1]}/${cleanName}`,
         isLocal: false,
       };
     }
 
     // Shorthand owner/repo format (e.g. facebook/react, aadhira636/FlashCardsApp)
-    const shorthandMatch = cleanUrl.match(/^([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)$/);
+    const shorthandMatch = trimmed.match(/^([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)$/);
     if (shorthandMatch) {
+      const cleanName = shorthandMatch[2].replace(/\.git$/i, '');
       return {
         owner: shorthandMatch[1],
-        name: shorthandMatch[2].replace(/\/$/, ''),
-        cleanUrl: `https://github.com/${shorthandMatch[1]}/${shorthandMatch[2].replace(/\/$/, '')}`,
+        name: cleanName,
+        cleanUrl: `https://github.com/${shorthandMatch[1]}/${cleanName}`,
         isLocal: false,
       };
     }
 
     // Generic git host
-    const genericMatch = cleanUrl.match(/(?:https?:\/\/)?([^\/]+)\/([^\/]+)\/([^\/]+)/i);
+    const genericMatch = trimmed.match(/(?:https?:\/\/)?([^\/]+)\/([^\/]+)\/([^\/]+)/i);
     if (genericMatch) {
+      const cleanName = genericMatch[3].replace(/\.git$/i, '');
       return {
         owner: genericMatch[2],
-        name: genericMatch[3].replace(/\/$/, ''),
-        cleanUrl: cleanUrl.startsWith('http') ? cleanUrl : `https://${cleanUrl}`,
+        name: cleanName,
+        cleanUrl: trimmed.startsWith('http') ? trimmed.replace(/\.git$/i, '') : `https://${trimmed.replace(/\.git$/i, '')}`,
         isLocal: false,
       };
     }
 
-    throw new Error(`Invalid repository URL: "${rawUrl}". Please provide a valid GitHub repository (e.g. "aadhira636/FlashCardsApp" or "https://github.com/owner/repo") or open a local folder.`);
+    throw new Error(`Invalid repository URL: "${rawUrl}". Please provide a valid GitHub repository URL (e.g. "https://github.com/owner/repo") or enter owner/repo.`);
   }
 
   /**
@@ -182,83 +208,6 @@ export class RepoManager {
   }
 
   /**
-   * Validate GitHub Token and verify repository access before performing analysis
-   */
-  public async validateGitHubAccess(
-    owner: string,
-    name: string,
-    token?: string,
-    isPrivate?: boolean
-  ): Promise<{ isValid: boolean; defaultBranch?: string; isPrivateRepo?: boolean }> {
-    const cleanToken = token ? token.trim() : '';
-
-    if (isPrivate && !cleanToken) {
-      throw new Error('A GitHub Personal Access Token is required for private repositories.');
-    }
-
-    if (cleanToken) {
-      // Step 1: Verify that the token itself is valid with GitHub
-      try {
-        const userRes = await fetch('https://api.github.com/user', {
-          headers: {
-            'User-Agent': 'Archon-Architecture-Intelligence',
-            Accept: 'application/vnd.github+json',
-            Authorization: `Bearer ${cleanToken}`,
-            'X-GitHub-Api-Version': '2022-11-28',
-          },
-        });
-
-        if (userRes.status === 401) {
-          throw new Error('GitHub authentication failed. Please check your token.');
-        }
-      } catch (err: any) {
-        if (err.message && err.message.includes('GitHub authentication failed')) {
-          throw err;
-        }
-        // If network error to GitHub API, continue to repo check
-      }
-
-      // Step 2: Verify that the token has permission to access the specific repository
-      try {
-        const repoRes = await fetch(`https://api.github.com/repos/${owner}/${name}`, {
-          headers: {
-            'User-Agent': 'Archon-Architecture-Intelligence',
-            Accept: 'application/vnd.github+json',
-            Authorization: `Bearer ${cleanToken}`,
-            'X-GitHub-Api-Version': '2022-11-28',
-          },
-        });
-
-        if (repoRes.status === 401) {
-          throw new Error('GitHub authentication failed. Please check your token.');
-        } else if (repoRes.status === 404) {
-          throw new Error('GitHub repository not found. Check the repository URL and token permissions.');
-        } else if (repoRes.status === 403) {
-          throw new Error('Your token does not have access to this repository.');
-        } else if (repoRes.ok) {
-          const repoData = await repoRes.json().catch(() => ({}));
-          return {
-            isValid: true,
-            defaultBranch: repoData.default_branch || 'main',
-            isPrivateRepo: repoData.private ?? isPrivate,
-          };
-        }
-      } catch (err: any) {
-        if (
-          err.message &&
-          (err.message.includes('GitHub authentication failed') ||
-            err.message.includes('GitHub repository not found') ||
-            err.message.includes('Your token does not have access'))
-        ) {
-          throw err;
-        }
-      }
-    }
-
-    return { isValid: true };
-  }
-
-  /**
    * Download and unpack GitHub Zipball when git binary is not present (Universal & Private Repos)
    */
   private async downloadGitHubZip(
@@ -271,59 +220,57 @@ export class RepoManager {
     let zipBuffer: Buffer | null = null;
     const cleanToken = token ? token.trim() : '';
 
-    // Strategy 1: Authenticated GitHub API (For Private Repositories)
+    // Strategy 1: Authenticated GitHub API (For Private Repositories & Elevated Limits)
     if (cleanToken) {
-      const targetRef = branch && branch !== 'default' ? branch : '';
-      const zipUrl = targetRef
-        ? `https://api.github.com/repos/${owner}/${name}/zipball/${targetRef}`
-        : `https://api.github.com/repos/${owner}/${name}/zipball`;
+      const authVariants = [
+        `Bearer ${cleanToken}`,
+        `token ${cleanToken}`,
+      ];
 
-      try {
-        const res = await fetch(zipUrl, {
-          headers: {
-            'User-Agent': 'Archon-Architecture-Intelligence',
-            Accept: 'application/vnd.github+json',
-            Authorization: `Bearer ${cleanToken}`,
-            'X-GitHub-Api-Version': '2022-11-28',
-          },
-          redirect: 'manual',
-        });
+      for (const authHeader of authVariants) {
+        if (zipBuffer) break;
 
-        if (res.status === 302 || res.status === 301) {
-          const redirectUrl = res.headers.get('location');
-          if (redirectUrl) {
-            const s3Res = await fetch(redirectUrl, {
-              headers: { 'User-Agent': 'Archon-Architecture-Intelligence' },
-              redirect: 'follow',
-            });
-            if (s3Res.ok) {
-              const arrayBuffer = await s3Res.arrayBuffer();
-              zipBuffer = Buffer.from(arrayBuffer);
+        const targetRef = branch && branch !== 'default' ? branch : '';
+        const zipUrl = targetRef
+          ? `https://api.github.com/repos/${owner}/${name}/zipball/${targetRef}`
+          : `https://api.github.com/repos/${owner}/${name}/zipball`;
+
+        try {
+          const res = await fetch(zipUrl, {
+            headers: {
+              'User-Agent': 'Archon-Architecture-Intelligence',
+              Accept: 'application/vnd.github+json',
+              Authorization: authHeader,
+              'X-GitHub-Api-Version': '2022-11-28',
+            },
+            redirect: 'manual',
+          });
+
+          if (res.status === 302 || res.status === 301) {
+            const redirectUrl = res.headers.get('location');
+            if (redirectUrl) {
+              const s3Res = await fetch(redirectUrl, {
+                headers: { 'User-Agent': 'Archon-Architecture-Intelligence' },
+                redirect: 'follow',
+              });
+              if (s3Res.ok) {
+                const arrayBuffer = await s3Res.arrayBuffer();
+                zipBuffer = Buffer.from(arrayBuffer);
+                break;
+              }
             }
+          } else if (res.ok) {
+            const arrayBuffer = await res.arrayBuffer();
+            zipBuffer = Buffer.from(arrayBuffer);
+            break;
           }
-        } else if (res.ok) {
-          const arrayBuffer = await res.arrayBuffer();
-          zipBuffer = Buffer.from(arrayBuffer);
-        } else if (res.status === 401) {
-          throw new Error('GitHub authentication failed. Please check your token.');
-        } else if (res.status === 404) {
-          throw new Error('GitHub repository not found. Check the repository URL and token permissions.');
-        } else if (res.status === 403) {
-          throw new Error('Your token does not have access to this repository.');
-        }
-      } catch (err: any) {
-        if (
-          err.message &&
-          (err.message.includes('GitHub authentication failed') ||
-            err.message.includes('GitHub repository not found') ||
-            err.message.includes('Your token does not have access'))
-        ) {
-          throw err;
+        } catch {
+          // Continue to next auth variant
         }
       }
     }
 
-    // Strategy 2: Direct public codeload.github.com archive (For public repos)
+    // Strategy 2: Direct public codeload archive (For public repos)
     if (!zipBuffer) {
       const candidateUrls: string[] = [];
       if (branch && branch !== 'default') {
@@ -352,7 +299,7 @@ export class RepoManager {
 
     if (!zipBuffer) {
       if (cleanToken) {
-        throw new Error('Unable to clone the repository. Please verify the repository URL and GitHub access.');
+        throw new Error('GitHub repository not found. Check the repository URL and token permissions.');
       } else {
         throw new Error(
           'GitHub repository not found or requires authentication. If this repository is private, please provide a GitHub Personal Access Token.'
@@ -442,23 +389,20 @@ export class RepoManager {
       return { repoDir: cleanUrl, metadata };
     }
 
-    // Pre-validate token & permissions if token provided or private repo indicated
-    const cleanToken = token ? token.trim() : '';
-    if (cleanToken || isPrivate) {
-      const accessInfo = await this.validateGitHubAccess(owner, name, cleanToken, isPrivate);
-      if (accessInfo.defaultBranch && (!branch || branch === 'default')) {
-        detectedBranch = accessInfo.defaultBranch;
-      }
-    }
-
     // Remote Git Acquisition
     let finalRepoDir = repoDir;
 
     if (!fs.existsSync(repoDir) || fs.readdirSync(repoDir).length === 0) {
       onProgress?.(`Acquiring repository ${owner}/${name}`, 20);
 
+      const cleanToken = token ? token.trim() : '';
+      if (isPrivate && !cleanToken) {
+        throw new Error('A GitHub Personal Access Token is required for private repositories.');
+      }
+
       let gitSucceeded = false;
 
+      // Strategy 1: Git clone with HTTP ExtraHeader (Clean, header-based auth)
       try {
         const git: SimpleGit = simpleGit();
         const cloneOptions = ['--depth', '1', '--single-branch', '--no-tags'];
@@ -466,7 +410,6 @@ export class RepoManager {
           cloneOptions.push('--branch', branch);
         }
 
-        // Secure Git Authentication: Pass token securely via HTTP extraheader (No tokens in URL or .git/config)
         if (cleanToken) {
           const basicAuth = Buffer.from(`x-access-token:${cleanToken}`).toString('base64');
           cloneOptions.push('-c', `http.extraheader=Authorization: Basic ${basicAuth}`);
@@ -474,7 +417,38 @@ export class RepoManager {
 
         await git.clone(cleanUrl, repoDir, cloneOptions);
         gitSucceeded = true;
+      } catch (err1) {
+        // Continue to Strategy 2
+      }
 
+      // Strategy 2: Git clone with URL-embedded credentials (Fallback for older git environments, then origin is sanitized)
+      if (!gitSucceeded && cleanToken) {
+        try {
+          if (fs.existsSync(repoDir)) {
+            fs.rmSync(repoDir, { recursive: true, force: true });
+          }
+
+          const git: SimpleGit = simpleGit();
+          const cloneOptions = ['--depth', '1', '--single-branch', '--no-tags'];
+          if (branch && branch !== 'default') {
+            cloneOptions.push('--branch', branch);
+          }
+
+          const authUrl = `https://x-access-token:${encodeURIComponent(cleanToken)}@github.com/${owner}/${name}.git`;
+          await git.clone(authUrl, repoDir, cloneOptions);
+          gitSucceeded = true;
+
+          // Immediately scrub token from .git/config remote url
+          try {
+            const clonedGit = simpleGit(repoDir);
+            await clonedGit.remote(['set-url', 'origin', `https://github.com/${owner}/${name}.git`]);
+          } catch {}
+        } catch (err2) {
+          // Continue to Strategy 3 (Zipball)
+        }
+      }
+
+      if (gitSucceeded) {
         try {
           const clonedGit: SimpleGit = simpleGit(repoDir);
           const log = await clonedGit.log({ maxCount: 1 });
@@ -486,12 +460,13 @@ export class RepoManager {
         } catch {
           commitHash = 'head';
         }
-      } catch (cloneErr: any) {
-        // Fall back to HTTPS zipball if git binary failed or clone had issues
       }
 
-      // Attempt 2: Direct HTTP Archive Download (Universal fallback)
+      // Strategy 3: Authenticated GitHub API Zipball Archive Download (For environments without git binary)
       if (!gitSucceeded) {
+        if (fs.existsSync(repoDir)) {
+          fs.rmSync(repoDir, { recursive: true, force: true });
+        }
         onProgress?.(`Downloading repository archive for ${owner}/${name}`, 25);
         finalRepoDir = await this.downloadGitHubZip(owner, name, repoDir, branch, cleanToken);
       }
