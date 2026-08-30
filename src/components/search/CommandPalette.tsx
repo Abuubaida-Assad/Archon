@@ -251,8 +251,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             ) : aiResult ? (
               <div className="space-y-4">
                 {/* Narrative Answer Card */}
-                <div className="p-4 rounded-xl bg-slate-900/90 border border-white/10 text-slate-200 leading-relaxed text-xs shadow-md">
-                  <p>{aiResult.answer}</p>
+                <div className="p-4 rounded-xl bg-slate-900/95 border border-surface-border text-slate-200 leading-relaxed text-xs shadow-md whitespace-pre-wrap font-sans select-text">
+                  {aiResult.answer}
                 </div>
 
                 {/* Clickable Execution Flow Steps */}
