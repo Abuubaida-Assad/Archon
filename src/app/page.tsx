@@ -43,8 +43,14 @@ export default function Home() {
   const [sourceModalPath, setSourceModalPath] = useState<string | null>(null);
   const [sourceModalLine, setSourceModalLine] = useState<number>(1);
 
-  // Analyze Repository Handler (Supports URL, Token, Branch, and Local Folder File uploads)
-  const handleAnalyze = async (url: string, branch?: string, token?: string, localFiles?: any[]) => {
+  // Analyze Repository Handler (Supports URL, Token, Branch, Private Repos, and Local Folder File uploads)
+  const handleAnalyze = async (
+    url: string,
+    branch?: string,
+    token?: string,
+    localFiles?: any[],
+    isPrivate?: boolean
+  ) => {
     setIsLoading(true);
     setErrorMessage('');
     setCurrentStage('Validating repository and preparing sandbox');
@@ -61,7 +67,7 @@ export default function Home() {
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, branch, token, files: localFiles }),
+        body: JSON.stringify({ url, branch, token, files: localFiles, isPrivate }),
       });
 
       clearTimeout(stageTimer);

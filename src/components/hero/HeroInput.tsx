@@ -8,6 +8,7 @@ import {
   FolderGit2,
   FolderOpen,
   Key,
+  Lock,
   GitPullRequest,
   Loader2,
   AlertCircle,
@@ -18,7 +19,13 @@ import {
 import { SampleRepoInfo, getSampleRepositories } from '@/lib/sample-repos';
 
 interface HeroInputProps {
-  onAnalyze: (url: string, branch?: string, token?: string, localFiles?: any[]) => Promise<void>;
+  onAnalyze: (
+    url: string,
+    branch?: string,
+    token?: string,
+    localFiles?: any[],
+    isPrivate?: boolean
+  ) => Promise<void>;
   isLoading: boolean;
   currentStage?: string;
   progressPercent?: number;
@@ -31,12 +38,12 @@ export const HeroInput: React.FC<HeroInputProps> = ({
   isLoading,
   errorMessage,
 }) => {
-  const [inputMode, setInputMode] = useState<'url' | 'folder' | 'pr'>('url');
+  const [inputMode, setInputMode] = useState<'url' | 'private' | 'folder' | 'pr'>('url');
   const [url, setUrl] = useState('');
   const [branch, setBranch] = useState('');
   const [token, setToken] = useState<string>('');
   const [prUrl, setPrUrl] = useState('');
-  const [showTokenModal, setShowTokenModal] = useState(false);
+  const [localError, setLocalError] = useState<string>('');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showSampleDropdown, setShowSampleDropdown] = useState(false);
   const [samples, setSamples] = useState<SampleRepoInfo[]>(getSampleRepositories());
@@ -45,11 +52,6 @@ export const HeroInput: React.FC<HeroInputProps> = ({
   const sampleDropdownRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    try {
-      const savedToken = localStorage.getItem('archon_github_token');
-      if (savedToken) setToken(savedToken);
-    } catch {}
-
     fetch('/api/samples')
       .then((res) => {
         if (!res.ok) return null;
@@ -60,7 +62,7 @@ export const HeroInput: React.FC<HeroInputProps> = ({
           setSamples(data.samples);
         }
       })
-      .catch((err) => console.warn('Failed to load sample repos from API, using built-ins:', err));
+      .catch(() => {});
   }, []);
 
   // Close sample dropdown on outside click
@@ -74,32 +76,41 @@ export const HeroInput: React.FC<HeroInputProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleSaveToken = (val: string) => {
-    setToken(val);
-    try {
-      if (val.trim()) {
-        localStorage.setItem('archon_github_token', val.trim());
-      } else {
-        localStorage.removeItem('archon_github_token');
-      }
-    } catch {}
-  };
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (isLoading) return;
+    setLocalError('');
 
-    if (inputMode === 'url' && url.trim()) {
-      onAnalyze(url.trim(), branch.trim() || undefined, token.trim() || undefined);
-    } else if (inputMode === 'pr' && prUrl.trim()) {
-      onAnalyze(prUrl.trim(), undefined, token.trim() || undefined);
+    if (inputMode === 'private') {
+      if (!url.trim()) {
+        setLocalError('Please enter a private repository URL.');
+        return;
+      }
+      if (!token.trim()) {
+        setLocalError('A GitHub Personal Access Token is required for private repositories.');
+        return;
+      }
+      onAnalyze(url.trim(), branch.trim() || undefined, token.trim(), undefined, true);
+    } else if (inputMode === 'url') {
+      if (!url.trim()) {
+        setLocalError('Please enter a repository URL.');
+        return;
+      }
+      onAnalyze(url.trim(), branch.trim() || undefined, token.trim() || undefined, undefined, false);
+    } else if (inputMode === 'pr') {
+      if (!prUrl.trim()) {
+        setLocalError('Please enter a pull request URL.');
+        return;
+      }
+      onAnalyze(prUrl.trim(), undefined, token.trim() || undefined, undefined, false);
     }
   };
 
   const handleSelectSample = (sample: SampleRepoInfo) => {
     setUrl(sample.name);
     setShowSampleDropdown(false);
-    onAnalyze(sample.url, undefined, token.trim() || undefined);
+    setLocalError('');
+    onAnalyze(sample.url, undefined, token.trim() || undefined, undefined, false);
   };
 
   // Browser Native Directory Picker (Web File System Access API)
@@ -148,7 +159,7 @@ export const HeroInput: React.FC<HeroInputProps> = ({
         await readDir(dirHandle);
 
         if (files.length > 0) {
-          onAnalyze(dirHandle.name, undefined, undefined, files);
+          onAnalyze(dirHandle.name, undefined, undefined, files, false);
         }
       } else if (fileInputRef.current) {
         fileInputRef.current.click();
@@ -186,9 +197,11 @@ export const HeroInput: React.FC<HeroInputProps> = ({
     }
 
     if (files.length > 0) {
-      onAnalyze('Local Folder', undefined, undefined, files);
+      onAnalyze('Local Folder', undefined, undefined, files, false);
     }
   };
+
+  const activeError = localError || errorMessage;
 
   return (
     <div className="w-full h-full min-h-0 flex-1 flex flex-col justify-center items-center px-4 py-8 overflow-y-auto bg-background text-slate-100 relative">
@@ -217,7 +230,10 @@ export const HeroInput: React.FC<HeroInputProps> = ({
         <div className="flex items-center gap-1 p-0.5 rounded-lg bg-slate-900 border border-slate-800 mb-3 text-xs">
           <button
             type="button"
-            onClick={() => setInputMode('url')}
+            onClick={() => {
+              setInputMode('url');
+              setLocalError('');
+            }}
             className={`flex items-center gap-1.5 px-3 py-1 rounded-md transition-colors text-xs font-medium ${
               inputMode === 'url'
                 ? 'bg-slate-800 text-slate-100 border border-slate-700'
@@ -226,6 +242,22 @@ export const HeroInput: React.FC<HeroInputProps> = ({
           >
             <FolderGit2 className="w-3.5 h-3.5 text-sky-400" />
             <span>GitHub</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setInputMode('private');
+              setLocalError('');
+            }}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-md transition-colors text-xs font-medium ${
+              inputMode === 'private'
+                ? 'bg-slate-800 text-slate-100 border border-slate-700'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Lock className="w-3.5 h-3.5 text-sky-400" />
+            <span>Private Repo</span>
           </button>
 
           <button
@@ -239,7 +271,10 @@ export const HeroInput: React.FC<HeroInputProps> = ({
 
           <button
             type="button"
-            onClick={() => setInputMode('pr')}
+            onClick={() => {
+              setInputMode('pr');
+              setLocalError('');
+            }}
             className={`flex items-center gap-1.5 px-3 py-1 rounded-md transition-colors text-xs font-medium ${
               inputMode === 'pr'
                 ? 'bg-slate-800 text-slate-100 border border-slate-700'
@@ -254,74 +289,134 @@ export const HeroInput: React.FC<HeroInputProps> = ({
         {/* Main Input Form */}
         <div className="w-full relative">
           <form onSubmit={handleSubmit} className="space-y-3">
-            <div className="flex flex-col sm:flex-row items-center gap-2 p-1.5 rounded-lg bg-slate-900 border border-slate-800 focus-within:border-slate-700 focus-within:ring-1 focus-within:ring-slate-700 transition-all">
-              <div className="flex items-center gap-2.5 px-2.5 py-1.5 w-full">
-                {inputMode === 'pr' ? (
-                  <GitPullRequest className="w-4 h-4 text-sky-400 shrink-0" />
-                ) : (
-                  <Globe2 className="w-4 h-4 text-slate-500 shrink-0" />
-                )}
-                <input
-                  type="text"
-                  value={inputMode === 'pr' ? prUrl : url}
-                  onChange={(e) => (inputMode === 'pr' ? setPrUrl(e.target.value) : setUrl(e.target.value))}
-                  placeholder={
-                    inputMode === 'pr'
-                      ? 'github.com/owner/repo/pull/123'
-                      : 'Enter GitHub URL or owner/repo'
-                  }
-                  disabled={isLoading}
-                  autoFocus
-                  className="w-full bg-transparent text-slate-100 placeholder-slate-500 text-xs sm:text-sm focus:outline-none font-sans"
-                />
-              </div>
-
-              <div className="flex items-center gap-1.5 w-full sm:w-auto shrink-0 justify-end">
-                <button
-                  type="button"
-                  onClick={() => setShowTokenModal(true)}
-                  className={`p-1.5 rounded-md border text-xs font-medium transition-colors ${
-                    token
-                      ? 'bg-sky-950 border-sky-800 text-sky-400'
-                      : 'bg-slate-850 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                  }`}
-                  title="GitHub Personal Access Token"
-                >
-                  <Key className="w-3.5 h-3.5" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setShowAdvanced(!showAdvanced)}
-                  className={`p-1.5 rounded-md border text-xs font-medium transition-colors ${
-                    showAdvanced
-                      ? 'bg-slate-800 border-slate-700 text-slate-200'
-                      : 'bg-slate-850 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                  }`}
-                  title="Branch & Scope Settings"
-                >
-                  <Settings2 className="w-3.5 h-3.5" />
-                </button>
-
-                <button
-                  type="submit"
-                  disabled={(!url.trim() && !prUrl.trim()) || isLoading}
-                  className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-1.5 rounded-md bg-sky-500 hover:bg-sky-400 disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 font-semibold text-xs sm:text-sm transition-colors shadow-sm"
-                >
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-950" />
-                      <span>Analyzing...</span>
-                    </>
+            {/* Standard Single Box Mode (Public GitHub / PR) */}
+            {inputMode !== 'private' ? (
+              <div className="flex flex-col sm:flex-row items-center gap-2 p-1.5 rounded-lg bg-slate-900 border border-slate-800 focus-within:border-slate-700 focus-within:ring-1 focus-within:ring-slate-700 transition-all">
+                <div className="flex items-center gap-2.5 px-2.5 py-1.5 w-full">
+                  {inputMode === 'pr' ? (
+                    <GitPullRequest className="w-4 h-4 text-sky-400 shrink-0" />
                   ) : (
-                    <>
-                      <span>Analyze</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </>
+                    <Globe2 className="w-4 h-4 text-slate-500 shrink-0" />
                   )}
-                </button>
+                  <input
+                    type="text"
+                    value={inputMode === 'pr' ? prUrl : url}
+                    onChange={(e) => (inputMode === 'pr' ? setPrUrl(e.target.value) : setUrl(e.target.value))}
+                    placeholder={
+                      inputMode === 'pr'
+                        ? 'github.com/owner/repo/pull/123'
+                        : 'Enter GitHub URL or owner/repo'
+                    }
+                    disabled={isLoading}
+                    autoFocus
+                    className="w-full bg-transparent text-slate-100 placeholder-slate-500 text-xs sm:text-sm focus:outline-none font-sans"
+                  />
+                </div>
+
+                <div className="flex items-center gap-1.5 w-full sm:w-auto shrink-0 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setShowAdvanced(!showAdvanced)}
+                    className={`p-1.5 rounded-md border text-xs font-medium transition-colors ${
+                      showAdvanced
+                        ? 'bg-slate-800 border-slate-700 text-slate-200'
+                        : 'bg-slate-850 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                    }`}
+                    title="Branch & Scope Settings"
+                  >
+                    <Settings2 className="w-3.5 h-3.5" />
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={(!url.trim() && !prUrl.trim()) || isLoading}
+                    className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-1.5 rounded-md bg-sky-500 hover:bg-sky-400 disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 font-semibold text-xs sm:text-sm transition-colors shadow-sm"
+                  >
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-950" />
+                        <span>Analyzing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Analyze</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
-            </div>
+            ) : (
+              /* Dedicated Private Repository Mode */
+              <div className="p-3.5 rounded-lg bg-slate-900 border border-slate-800 space-y-3 shadow-md">
+                {/* Repository URL Input */}
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-400 mb-1">Repository URL</label>
+                  <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-slate-950 border border-slate-800 focus-within:border-slate-700">
+                    <Lock className="w-4 h-4 text-sky-400 shrink-0" />
+                    <input
+                      type="text"
+                      value={url}
+                      onChange={(e) => setUrl(e.target.value)}
+                      placeholder="https://github.com/username/private-repository"
+                      disabled={isLoading}
+                      autoFocus
+                      className="w-full bg-transparent text-slate-100 placeholder-slate-500 text-xs sm:text-sm focus:outline-none font-sans"
+                    />
+                  </div>
+                </div>
+
+                {/* Personal Access Token Input */}
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-400 mb-1">
+                    GitHub Personal Access Token
+                  </label>
+                  <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-slate-950 border border-slate-800 focus-within:border-slate-700">
+                    <Key className="w-4 h-4 text-sky-400 shrink-0" />
+                    <input
+                      type="password"
+                      value={token}
+                      onChange={(e) => setToken(e.target.value)}
+                      placeholder="ghp_xxxxxxxxxxxxxxxxxxxx or github_pat_xxxxxxxx"
+                      disabled={isLoading}
+                      className="w-full bg-transparent text-slate-100 placeholder-slate-500 text-xs sm:text-sm focus:outline-none font-mono"
+                    />
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Required only for private GitHub repositories. Never logged or stored.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowAdvanced(!showAdvanced)}
+                    className="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1"
+                  >
+                    <Settings2 className="w-3.5 h-3.5" />
+                    <span>Branch settings</span>
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={!url.trim() || !token.trim() || isLoading}
+                    className="flex items-center justify-center gap-1.5 px-5 py-2 rounded-md bg-sky-500 hover:bg-sky-400 disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 font-semibold text-xs sm:text-sm transition-colors shadow-sm"
+                  >
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-950" />
+                        <span>Analyzing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Analyze</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Advanced Configuration Panel */}
             {showAdvanced && (
@@ -360,68 +455,13 @@ export const HeroInput: React.FC<HeroInputProps> = ({
             </div>
           )}
 
-          {/* GitHub PAT Token Modal */}
-          {showTokenModal && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-              <div className="w-full max-w-md rounded-lg bg-slate-900 border border-slate-800 p-5 shadow-xl space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Key className="w-4 h-4 text-sky-400" />
-                    <h3 className="text-sm font-semibold text-slate-100">GitHub Personal Access Token</h3>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowTokenModal(false)}
-                    className="text-slate-400 hover:text-slate-200"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-
-                <p className="text-xs text-slate-400">
-                  Used for private repositories & higher GitHub API rate limits.
-                </p>
-
-                <div>
-                  <input
-                    type="password"
-                    value={token}
-                    onChange={(e) => handleSaveToken(e.target.value)}
-                    placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
-                    className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-xs font-mono text-slate-200 focus:outline-none focus:border-slate-700"
-                  />
-                  <p className="text-[11px] text-slate-500 mt-1.5">
-                    Your token is stored locally in your browser memory and is never logged.
-                  </p>
-                </div>
-
-                <div className="flex justify-end gap-2 text-xs pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setShowTokenModal(false)}
-                    className="px-3 py-1.5 rounded-md bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors"
-                  >
-                    Close
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowTokenModal(false)}
-                    className="px-3 py-1.5 rounded-md bg-sky-500 text-slate-950 font-semibold hover:bg-sky-400 transition-colors"
-                  >
-                    Save Token
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Error Notification */}
-          {errorMessage && (
+          {activeError && (
             <div className="mt-3 p-3 rounded-lg bg-rose-950/40 border border-rose-900/60 text-rose-300 text-xs flex items-start gap-2">
               <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
               <div>
                 <p className="font-semibold mb-0.5">Analysis Failed</p>
-                <p className="text-rose-400">{errorMessage}</p>
+                <p className="text-rose-400">{activeError}</p>
               </div>
             </div>
           )}
@@ -476,4 +516,5 @@ export const HeroInput: React.FC<HeroInputProps> = ({
     </div>
   );
 };
+
 

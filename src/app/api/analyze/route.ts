@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { defaultOrchestrator } from '@/lib/analyzer/analysis-orchestrator';
-import { FileEntry } from '@/lib/analyzer/repo-manager';
+import { defaultRepoManager, FileEntry } from '@/lib/analyzer/repo-manager';
 import crypto from 'crypto';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { url, branch, token, files } = body;
+    const { url, repoUrl, branch, token, githubToken, isPrivate, files } = body;
+
+    const rawUrl = (url || repoUrl || '').trim();
+    const cleanToken = (token || githubToken || '').trim() || undefined;
 
     // Handle Local Folder Files directly uploaded from browser
     if (files && Array.isArray(files) && files.length > 0) {
-      const folderName = url || 'Local Codebase';
+      const folderName = rawUrl || 'Local Codebase';
       const repoId = `local-${crypto.createHash('md5').update(folderName + files.length).digest('hex').slice(0, 12)}`;
 
       const formattedFiles: FileEntry[] = files.map((f: any) => {
@@ -68,15 +71,23 @@ export async function POST(req: NextRequest) {
     }
 
     // Handle Git URL
-    if (!url || typeof url !== 'string') {
+    if (!rawUrl || typeof rawUrl !== 'string') {
       return NextResponse.json(
         { success: false, error: 'Repository URL or path is required.' },
         { status: 400 }
       );
     }
 
+    // Validate private repo token requirement upfront
+    if (isPrivate && !cleanToken) {
+      return NextResponse.json(
+        { success: false, error: 'A GitHub Personal Access Token is required for private repositories.' },
+        { status: 400 }
+      );
+    }
+
     // Support shorthand like "facebook/react" or "owner/repo"
-    let fullUrl = url.trim();
+    let fullUrl = rawUrl;
     if (!fullUrl.startsWith('http://') && !fullUrl.startsWith('https://') && !fullUrl.startsWith('/') && fullUrl.includes('/')) {
       fullUrl = `https://github.com/${fullUrl}`;
     }
@@ -85,7 +96,8 @@ export async function POST(req: NextRequest) {
       fullUrl,
       branch ? String(branch).trim() : undefined,
       undefined,
-      token ? String(token).trim() : undefined
+      cleanToken,
+      Boolean(isPrivate)
     );
 
     return NextResponse.json({
@@ -94,13 +106,15 @@ export async function POST(req: NextRequest) {
       summary,
     });
   } catch (error: any) {
-    console.error('[API /analyze] Analysis failed:', error);
+    const sanitizedError = defaultRepoManager.sanitizeError(error?.message || 'An error occurred during repository analysis.');
+    console.error('[API /analyze] Analysis error:', sanitizedError);
     return NextResponse.json(
       {
         success: false,
-        error: error.message || 'An error occurred during repository analysis.',
+        error: sanitizedError,
       },
       { status: 500 }
     );
   }
 }
+

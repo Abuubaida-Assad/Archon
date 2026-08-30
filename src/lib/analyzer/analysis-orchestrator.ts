@@ -56,14 +56,15 @@ export class AnalysisOrchestrator {
     url: string,
     branch?: string,
     onProgress?: ProgressCallback,
-    token?: string
+    token?: string,
+    isPrivate?: boolean
   ): Promise<ArchitectureSummary> {
     const startTime = Date.now();
 
     onProgress?.('Repository acquisition & validation', 10, 'Checking repository credentials and URL');
     const { repoDir, metadata } = await this.repoManager.acquireRepository(url, branch, (stage, pct) => {
       onProgress?.(stage, pct);
-    }, token);
+    }, token, isPrivate);
 
     onProgress?.('Scanning files and language classification', 30, `Found ${metadata.totalFiles} files, ${metadata.totalLoc} lines of code`);
     const files = this.repoManager.scanDirectory(repoDir);
