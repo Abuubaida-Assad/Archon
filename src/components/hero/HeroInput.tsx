@@ -44,7 +44,7 @@ export const HeroInput: React.FC<HeroInputProps> = ({
   const [inputMode, setInputMode] = useState<'url' | 'folder' | 'pr'>('url');
   const [url, setUrl] = useState('');
   const [branch, setBranch] = useState('');
-  const [token, setToken] = useState('');
+  const [token, setToken] = useState<string>('');
   const [prUrl, setPrUrl] = useState('');
   const [showTokenModal, setShowTokenModal] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -53,6 +53,11 @@ export const HeroInput: React.FC<HeroInputProps> = ({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
+    try {
+      const savedToken = localStorage.getItem('archon_github_token');
+      if (savedToken) setToken(savedToken);
+    } catch {}
+
     fetch('/api/samples')
       .then((res) => {
         if (!res.ok) return null;
@@ -65,6 +70,17 @@ export const HeroInput: React.FC<HeroInputProps> = ({
       })
       .catch((err) => console.warn('Failed to load sample repos from API, using built-ins:', err));
   }, []);
+
+  const handleSaveToken = (val: string) => {
+    setToken(val);
+    try {
+      if (val.trim()) {
+        localStorage.setItem('archon_github_token', val.trim());
+      } else {
+        localStorage.removeItem('archon_github_token');
+      }
+    } catch {}
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -389,7 +405,7 @@ export const HeroInput: React.FC<HeroInputProps> = ({
                   <input
                     type="password"
                     value={token}
-                    onChange={(e) => setToken(e.target.value)}
+                    onChange={(e) => handleSaveToken(e.target.value)}
                     placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono text-slate-200 focus:outline-none focus:border-sky-500"
                   />

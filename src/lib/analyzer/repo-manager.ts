@@ -76,7 +76,6 @@ export class RepoManager {
   private baseStorageDir: string;
 
   constructor(storageDir?: string) {
-    // On Vercel / serverless, only os.tmpdir() is writable. Never use process.cwd()!
     this.baseStorageDir = storageDir || path.join(os.tmpdir(), 'archon-repos');
     try {
       if (!fs.existsSync(this.baseStorageDir)) {
@@ -105,10 +104,9 @@ export class RepoManager {
         };
       }
     } catch {
-      // Not a local directory or inaccessible
+      // Not a local directory
     }
 
-    // Clean up .git suffix and whitespace
     let cleanUrl = trimmed;
     if (cleanUrl.endsWith('.git')) {
       cleanUrl = cleanUrl.slice(0, -4);
@@ -136,7 +134,7 @@ export class RepoManager {
       };
     }
 
-    // Shorthand owner/repo format (e.g. facebook/react, expressjs/express, pmndrs/zustand)
+    // Shorthand owner/repo format (e.g. facebook/react, aadhira636/FlashCardsApp)
     const shorthandMatch = cleanUrl.match(/^([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)$/);
     if (shorthandMatch) {
       return {
@@ -147,7 +145,7 @@ export class RepoManager {
       };
     }
 
-    // GitLab / Bitbucket or generic git host
+    // Generic git host
     const genericMatch = cleanUrl.match(/(?:https?:\/\/)?([^\/]+)\/([^\/]+)\/([^\/]+)/i);
     if (genericMatch) {
       return {
@@ -158,7 +156,7 @@ export class RepoManager {
       };
     }
 
-    throw new Error(`Invalid repository URL: "${rawUrl}". Please provide a valid GitHub repository (e.g. "expressjs/express" or "https://github.com/owner/repo") or open a local folder.`);
+    throw new Error(`Invalid repository URL: "${rawUrl}". Please provide a valid GitHub repository (e.g. "aadhira636/FlashCardsApp" or "https://github.com/owner/repo") or open a local folder.`);
   }
 
   /**
@@ -171,7 +169,7 @@ export class RepoManager {
   }
 
   /**
-   * Download and unpack GitHub Zipball when git binary is not present (Vercel Serverless)
+   * Download and unpack GitHub Zipball when git binary is not present (Universal & Private Repos)
    */
   private async downloadGitHubZip(
     owner: string,
@@ -181,36 +179,58 @@ export class RepoManager {
     token?: string
   ): Promise<string> {
     let response: Response | null = null;
+    let authErrorDetail = '';
 
-    // Strategy 1: If GitHub PAT token is provided, use official authenticated API
-    if (token) {
-      try {
-        const targetRef = branch && branch !== 'default' ? branch : 'HEAD';
-        const zipUrl = `https://api.github.com/repos/${owner}/${name}/zipball/${targetRef}`;
-        response = await fetch(zipUrl, {
-          headers: {
-            'User-Agent': 'Archon-Architecture-Intelligence',
-            Accept: 'application/vnd.github.v3+json',
-            Authorization: `token ${token}`,
-          },
-          redirect: 'follow',
-        });
-      } catch (err) {
-        console.warn('[RepoManager] Token API download failed, falling back to public codeload:', err);
+    const cleanToken = token ? token.trim() : '';
+
+    // Strategy 1: Authenticated GitHub API (For Private Repositories & Elevated Limits)
+    if (cleanToken) {
+      const authHeadersVariants = [
+        { Authorization: `Bearer ${cleanToken}` },
+        { Authorization: `token ${cleanToken}` },
+      ];
+
+      for (const authHeader of authHeadersVariants) {
+        const targetRef = branch && branch !== 'default' ? branch : '';
+        const zipUrl = targetRef
+          ? `https://api.github.com/repos/${owner}/${name}/zipball/${targetRef}`
+          : `https://api.github.com/repos/${owner}/${name}/zipball`;
+
+        try {
+          const res = await fetch(zipUrl, {
+            headers: {
+              'User-Agent': 'Archon-Architecture-Intelligence',
+              Accept: 'application/vnd.github+json',
+              'X-GitHub-Api-Version': '2022-11-28',
+              ...authHeader,
+            },
+            redirect: 'follow',
+          });
+
+          if (res.ok) {
+            response = res;
+            break;
+          } else if (res.status === 401 || res.status === 403 || res.status === 404) {
+            const errJson = await res.json().catch(() => ({}));
+            authErrorDetail = errJson.message || `HTTP ${res.status}`;
+          }
+        } catch (err: any) {
+          console.warn('[RepoManager] Authenticated zipball fetch error:', err);
+        }
       }
     }
 
-    // Strategy 2: Direct codeload.github.com (Zero API rate limits, 100% serverless safe)
+    // Strategy 2: Direct public codeload.github.com archive (For public repos, zero rate limits)
     if (!response || !response.ok) {
-      const urlsToTry: string[] = [];
+      const candidateUrls: string[] = [];
       if (branch && branch !== 'default') {
-        urlsToTry.push(`https://codeload.github.com/${owner}/${name}/zip/refs/heads/${branch}`);
+        candidateUrls.push(`https://codeload.github.com/${owner}/${name}/zip/refs/heads/${branch}`);
       }
-      urlsToTry.push(`https://codeload.github.com/${owner}/${name}/zip/HEAD`);
-      urlsToTry.push(`https://codeload.github.com/${owner}/${name}/zip/refs/heads/main`);
-      urlsToTry.push(`https://codeload.github.com/${owner}/${name}/zip/refs/heads/master`);
+      candidateUrls.push(`https://codeload.github.com/${owner}/${name}/zip/HEAD`);
+      candidateUrls.push(`https://codeload.github.com/${owner}/${name}/zip/refs/heads/main`);
+      candidateUrls.push(`https://codeload.github.com/${owner}/${name}/zip/refs/heads/master`);
 
-      for (const url of urlsToTry) {
+      for (const url of candidateUrls) {
         try {
           const res = await fetch(url, {
             headers: { 'User-Agent': 'Archon' },
@@ -221,19 +241,26 @@ export class RepoManager {
             break;
           }
         } catch {
-          // Continue to next candidate URL
+          // Continue to next candidate
         }
       }
     }
 
     if (!response || !response.ok) {
-      throw new Error(`Failed to access repository "${owner}/${name}". Please verify the repository name or provide a GitHub Personal Access Token if this is a private repository.`);
+      if (cleanToken) {
+        throw new Error(
+          `Failed to access private repository "${owner}/${name}" (${authErrorDetail || 'Unauthorized'}). Please ensure your GitHub Personal Access Token is valid and has "repo" scope (classic token) or "Contents: Read" permission (fine-grained token).`
+        );
+      } else {
+        throw new Error(
+          `Failed to access repository "${owner}/${name}". If this repository is private, please click the Key icon to provide a GitHub Personal Access Token.`
+        );
+      }
     }
 
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // Extract zip in memory into targetDir
     const zip = new AdmZip(buffer);
     const zipEntries = zip.getEntries();
 
@@ -241,7 +268,6 @@ export class RepoManager {
       throw new Error(`Downloaded repository archive for ${owner}/${name} was empty.`);
     }
 
-    // GitHub zip archives have a root container folder (e.g. "owner-repo-sha123/"). Strip it.
     const rootDirName = zipEntries[0].entryName.split('/')[0];
     
     if (!fs.existsSync(targetDir)) {
@@ -322,8 +348,10 @@ export class RepoManager {
     if (!fs.existsSync(repoDir) || fs.readdirSync(repoDir).length === 0) {
       onProgress?.(`Acquiring repository ${owner}/${name}`, 20);
 
-      // First attempt standard git clone
+      // Attempt 1: Standard Git clone (handles both public and private with token)
       let gitSucceeded = false;
+      const cleanToken = token ? token.trim() : '';
+
       try {
         const git: SimpleGit = simpleGit();
         const cloneOptions = ['--depth', '1', '--single-branch', '--no-tags'];
@@ -332,8 +360,8 @@ export class RepoManager {
         }
 
         let cloneUrl = cleanUrl;
-        if (token) {
-          cloneUrl = `https://${token}@github.com/${owner}/${name}.git`;
+        if (cleanToken) {
+          cloneUrl = `https://x-access-token:${encodeURIComponent(cleanToken)}@github.com/${owner}/${name}.git`;
         }
 
         await git.clone(cloneUrl, repoDir, cloneOptions);
@@ -351,16 +379,15 @@ export class RepoManager {
           commitHash = 'head';
         }
       } catch (cloneErr: any) {
-        console.warn(`[RepoManager] Git clone failed or not available on serverless, falling back to GitHub Archive ZIP:`, cloneErr?.message || cloneErr);
+        console.warn(`[RepoManager] Git clone failed (or missing git binary), falling back to HTTPS zipball:`, cloneErr?.message || cloneErr);
       }
 
-      // If git clone failed or git is missing in serverless environment, download zipball via HTTPS
+      // Attempt 2: Direct HTTP Archive Download (Universal across all hosting platforms)
       if (!gitSucceeded) {
         onProgress?.(`Downloading repository archive for ${owner}/${name}`, 25);
-        finalRepoDir = await this.downloadGitHubZip(owner, name, repoDir, branch, token);
+        finalRepoDir = await this.downloadGitHubZip(owner, name, repoDir, branch, cleanToken);
       }
     } else {
-      // Use cached repository in /tmp
       finalRepoDir = repoDir;
       const subEntries = fs.readdirSync(repoDir);
       if (subEntries.length === 1 && fs.statSync(path.join(repoDir, subEntries[0])).isDirectory()) {
