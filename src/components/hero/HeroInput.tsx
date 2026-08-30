@@ -10,6 +10,7 @@ import {
   GitPullRequest,
   Loader2,
   AlertCircle,
+  ChevronDown,
   Globe2,
   Sparkles,
 } from 'lucide-react';
@@ -41,6 +42,7 @@ export const HeroInput: React.FC<HeroInputProps> = ({
   const [prUrl, setPrUrl] = useState('');
   const [localError, setLocalError] = useState<string>('');
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showSamples, setShowSamples] = useState(false);
   const [samples, setSamples] = useState<SampleRepoInfo[]>(getSampleRepositories());
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -351,37 +353,57 @@ export const HeroInput: React.FC<HeroInputProps> = ({
           )}
         </div>
 
-        {/* Sample Repositories (Modern Interactive Chip Grid) */}
-        <div className="mt-5 w-full flex flex-col items-center">
-          <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mb-2.5">
-            <Sparkles className="w-3 h-3 text-sky-400" />
-            <span>Try an open-source sample:</span>
-          </div>
+        {/* Sample Repositories (Button with Horizontal Cards Showcase) */}
+        <div className="mt-4 w-full flex flex-col items-center">
+          <button
+            type="button"
+            onClick={() => setShowSamples(!showSamples)}
+            disabled={isLoading}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border transition-all ${
+              showSamples
+                ? 'bg-slate-800 text-slate-100 border-slate-700 shadow-sm'
+                : 'bg-slate-900/80 text-slate-400 hover:text-slate-200 border-slate-800 hover:border-slate-700'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+            <span>Sample repositories</span>
+            <ChevronDown className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 ${showSamples ? 'rotate-180' : ''}`} />
+          </button>
 
-          <div className="flex flex-wrap items-center justify-center gap-1.5 max-w-xl">
-            {samples.slice(0, 5).map((sample) => {
-              const shortName = sample.name.split('/')[1] || sample.name;
-              const langTag = sample.tags?.[0] || 'Code';
+          {/* Horizontal Layout Showcase */}
+          {showSamples && (
+            <div className="mt-3 w-full max-w-2xl animate-in fade-in slide-in-from-top-1 duration-200">
+              <div className="flex items-stretch justify-start sm:justify-center gap-2 overflow-x-auto pb-2 pt-1 px-1">
+                {samples.map((sample) => {
+                  const shortName = sample.name.split('/')[1] || sample.name;
+                  const langTag = sample.tags?.[0] || 'Code';
 
-              return (
-                <button
-                  key={sample.id}
-                  type="button"
-                  onClick={() => handleSelectSample(sample)}
-                  disabled={isLoading}
-                  title={sample.description}
-                  className="group flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900/80 hover:bg-slate-800 border border-slate-800/90 hover:border-slate-700 transition-all text-xs disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <span className="font-mono text-slate-300 group-hover:text-sky-400 font-medium transition-colors">
-                    {shortName}
-                  </span>
-                  <span className="text-[10px] text-slate-500 font-mono px-1 py-0.2 rounded bg-slate-950 border border-slate-850">
-                    {langTag}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+                  return (
+                    <button
+                      key={sample.id}
+                      type="button"
+                      onClick={() => handleSelectSample(sample)}
+                      disabled={isLoading}
+                      title={sample.description}
+                      className="shrink-0 flex flex-col justify-between p-2.5 rounded-lg bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-sky-500/50 transition-all text-left group min-w-[130px] max-w-[160px] shadow-sm"
+                    >
+                      <div className="flex items-center justify-between gap-1 w-full mb-1.5">
+                        <span className="font-mono text-xs font-semibold text-slate-200 group-hover:text-sky-400 transition-colors truncate">
+                          {shortName}
+                        </span>
+                        <span className="text-[10px] font-mono text-slate-400 px-1 py-0.5 rounded bg-slate-950 border border-slate-800 shrink-0">
+                          {langTag}
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-slate-500 line-clamp-2 leading-tight">
+                        {sample.category}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
