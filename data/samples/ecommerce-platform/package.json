@@ -1,0 +1,13 @@
+{
+  "name": "ecommerce-platform",
+  "version": "2.4.0",
+  "description": "Distributed e-commerce architecture with payments, orders, and inventory",
+  "main": "src/index.ts",
+  "dependencies": {
+    "express": "^4.19.0",
+    "@prisma/client": "^5.10.0",
+    "stripe": "^14.0.0",
+    "redis": "^4.6.0",
+    "jsonwebtoken": "^9.0.0"
+  }
+}

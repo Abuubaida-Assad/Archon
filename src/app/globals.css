@@ -1,0 +1,263 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-primary: #080B10;
+  --bg-surface: #0F141C;
+  --bg-elevated: #151C27;
+  --border-subtle: #1E293B;
+  --border-active: #38BDF8;
+  --text-primary: #F1F5F9;
+  --text-secondary: #94A3B8;
+  --text-muted: #64748B;
+  --accent-cyan: #38BDF8;
+  --accent-emerald: #10B981;
+  --accent-amber: #F59E0B;
+  --accent-rose: #F43F5E;
+}
+
+html.light {
+  --bg-primary: #F5F3EF;
+  --bg-surface: #FAF8F5;
+  --bg-elevated: #EFECE6;
+  --border-subtle: #DDD7CD;
+  --border-active: #0284C7;
+  --text-primary: #1C1917;
+  --text-secondary: #44403C;
+  --text-muted: #78716C;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-sans), 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  letter-spacing: -0.01em;
+  overflow-x: hidden;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-subtle);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Code Snippet Styles */
+pre, code, kbd {
+  font-family: var(--font-mono), 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+/* Glass Surface effect */
+.glass-panel {
+  background: rgba(15, 20, 28, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+html.light .glass-panel {
+  background: rgba(250, 248, 245, 0.92);
+  border: 1px solid #DDD7CD;
+}
+
+.glass-panel-elevated {
+  background: rgba(21, 28, 39, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+html.light .glass-panel-elevated {
+  background: rgba(239, 236, 230, 0.94);
+  border: 1px solid #DDD7CD;
+}
+
+/* =========================================================================
+   Universal Light Beige Mode Overrides for Entire App & All Screens
+   ========================================================================= */
+
+html.light {
+  color-scheme: light;
+}
+
+html.light header {
+  background-color: rgba(247, 245, 240, 0.92) !important;
+  border-color: #DDD7CD !important;
+}
+
+/* Canvas & Base Viewport Backgrounds (Warm Light Beige) */
+html.light main,
+html.light .bg-\[\#080B10\],
+html.light .bg-\[\#0B0F19\],
+html.light .bg-\[\#0A0E17\],
+html.light .bg-slate-950,
+html.light .bg-background {
+  background-color: #F5F3EF !important;
+}
+
+/* Main Cards, Scorecards & Grid Cards (Warm Creamy Alabaster) */
+html.light .bg-slate-900,
+html.light .bg-surface {
+  background-color: #FAF8F5 !important;
+}
+
+html.light .bg-slate-900\/60,
+html.light .bg-slate-900\/70,
+html.light .bg-slate-900\/80,
+html.light .bg-slate-900\/90,
+html.light .bg-slate-900\/95,
+html.light .bg-slate-950\/40,
+html.light .bg-slate-950\/50,
+html.light .bg-slate-950\/60,
+html.light .bg-slate-950\/70,
+html.light .bg-slate-950\/80,
+html.light .bg-slate-950\/90,
+html.light .bg-slate-950\/95 {
+  background-color: rgba(250, 248, 245, 0.94) !important;
+  backdrop-filter: blur(16px) !important;
+}
+
+/* Inner Panels, Code Blocks & Sub-elements (Warm Soft Stone) */
+html.light .bg-slate-850,
+html.light .bg-slate-800 {
+  background-color: #EFECE6 !important;
+}
+
+html.light .bg-slate-800\/50,
+html.light .bg-slate-800\/60 {
+  background-color: rgba(239, 236, 230, 0.85) !important;
+}
+
+html.light .bg-surface-elevated {
+  background-color: #EFECE6 !important;
+}
+
+/* Code Snippet Blocks in Code Canvas & Modals */
+html.light pre,
+html.light code {
+  color: #1C1917 !important;
+}
+
+html.light .bg-slate-950 pre,
+html.light .bg-slate-950 .table-cell {
+  color: #1C1917 !important;
+}
+
+html.light .bg-slate-950 .table-cell.text-slate-600 {
+  color: #78716C !important;
+}
+
+/* Borders (Warm Soft Sand) */
+html.light .border-slate-800,
+html.light .border-slate-800\/60,
+html.light .border-slate-800\/80,
+html.light .border-slate-850,
+html.light .border-slate-900,
+html.light .border-slate-700,
+html.light .border-surface-border,
+html.light .border-white\/10,
+html.light .border-white\/5,
+html.light .border-white\/20 {
+  border-color: #DDD7CD !important;
+}
+
+/* Typography (Deep Warm Charcoal / Espresso for 100% High Readability) */
+html.light .text-slate-100,
+html.light .text-slate-200 {
+  color: #1C1917 !important;
+}
+
+html.light .text-slate-300 {
+  color: #44403C !important;
+}
+
+html.light .text-slate-400 {
+  color: #78716C !important;
+}
+
+html.light .text-slate-500 {
+  color: #A8A29E !important;
+}
+
+/* Interactive Hovers */
+html.light .hover\:bg-slate-800:hover,
+html.light .hover\:bg-slate-850:hover {
+  background-color: #E8E4DC !important;
+}
+
+/* Accent Badges in Light Beige */
+html.light .bg-sky-950,
+html.light .bg-sky-950\/80,
+html.light .bg-sky-950\/90,
+html.light .bg-sky-950\/60,
+html.light .bg-sky-950\/40 {
+  background-color: #E0F2FE !important;
+  color: #0369A1 !important;
+  border-color: #BAE6FD !important;
+}
+
+html.light .bg-emerald-950,
+html.light .bg-emerald-950\/80,
+html.light .bg-emerald-950\/90 {
+  background-color: #DCFCE7 !important;
+  color: #15803D !important;
+  border-color: #BBF7D0 !important;
+}
+
+html.light .bg-rose-950,
+html.light .bg-rose-950\/40,
+html.light .bg-rose-950\/80 {
+  background-color: #FFE4E6 !important;
+  color: #BE123C !important;
+  border-color: #FECDD3 !important;
+}
+
+html.light .bg-amber-950,
+html.light .bg-amber-950\/40,
+html.light .bg-amber-950\/80 {
+  background-color: #FEF3C7 !important;
+  color: #B45309 !important;
+  border-color: #FDE68A !important;
+}
+
+html.light .bg-purple-950,
+html.light .bg-purple-950\/40 {
+  background-color: #F3E8FF !important;
+  color: #7E22CE !important;
+  border-color: #E9D5FF !important;
+}
+
+/* Form Inputs & Modals in Light Beige */
+html.light input,
+html.light select,
+html.light textarea {
+  background-color: #FAF8F5 !important;
+  color: #1C1917 !important;
+  border-color: #DDD7CD !important;
+}
+
+html.light input::placeholder {
+  color: #A8A29E !important;
+}
+
+/* Canvas Graph Container */
+.graph-canvas {
+  cursor: grab;
+}
+.graph-canvas:active {
+  cursor: grabbing;
+}
