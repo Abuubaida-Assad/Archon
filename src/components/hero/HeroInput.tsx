@@ -370,10 +370,10 @@ export const HeroInput: React.FC<HeroInputProps> = ({
             <ChevronDown className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 ${showSamples ? 'rotate-180' : ''}`} />
           </button>
 
-          {/* Horizontal Layout Showcase */}
+          {/* Horizontal Layout Showcase (No scrollbar, clean responsive flex/grid) */}
           {showSamples && (
             <div className="mt-3 w-full max-w-2xl animate-in fade-in slide-in-from-top-1 duration-200">
-              <div className="flex items-stretch justify-start sm:justify-center gap-2 overflow-x-auto pb-2 pt-1 px-1">
+              <div className="flex flex-wrap items-center justify-center gap-2 w-full">
                 {samples.map((sample) => {
                   const shortName = sample.name.split('/')[1] || sample.name;
                   const langTag = sample.tags?.[0] || 'Code';
@@ -385,19 +385,14 @@ export const HeroInput: React.FC<HeroInputProps> = ({
                       onClick={() => handleSelectSample(sample)}
                       disabled={isLoading}
                       title={sample.description}
-                      className="shrink-0 flex flex-col justify-between p-2.5 rounded-lg bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-sky-500/50 transition-all text-left group min-w-[130px] max-w-[160px] shadow-sm"
+                      className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-sky-500/50 transition-all text-left group shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <div className="flex items-center justify-between gap-1 w-full mb-1.5">
-                        <span className="font-mono text-xs font-semibold text-slate-200 group-hover:text-sky-400 transition-colors truncate">
-                          {shortName}
-                        </span>
-                        <span className="text-[10px] font-mono text-slate-400 px-1 py-0.5 rounded bg-slate-950 border border-slate-800 shrink-0">
-                          {langTag}
-                        </span>
-                      </div>
-                      <div className="text-[10px] text-slate-500 line-clamp-2 leading-tight">
-                        {sample.category}
-                      </div>
+                      <span className="font-mono text-xs font-semibold text-slate-200 group-hover:text-sky-400 transition-colors">
+                        {shortName}
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-400 px-1.5 py-0.5 rounded bg-slate-950 border border-slate-800 shrink-0">
+                        {langTag}
+                      </span>
                     </button>
                   );
                 })}
